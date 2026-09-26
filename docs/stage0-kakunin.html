@@ -67,6 +67,7 @@
   h2 { font-size: 1.375rem; }
   h3 { font-size: 1rem; font-weight: 700; margin: 0; }
   p { margin: 0; }
+  a { color: var(--accent); text-underline-offset: 3px; overflow-wrap: anywhere; }
   a:focus-visible, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
   header { display: grid; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 20px; }
@@ -128,7 +129,8 @@
     <p class="eyebrow">山波創苑　外構CAD「縄張り台（仮称）」</p>
     <h1>第0段　確認の回</h1>
     <div class="meta">
-      <span>2026年9月26日</span>
+      <span>2026年9月26日　改訂</span>
+      <span>甲案（Obsidian プラグイン）の裁可を受けて書き直し</span>
       <span>コードなし</span>
       <span>質問は最後の一つだけ</span>
     </div>
@@ -137,9 +139,9 @@
   <section aria-labelledby="s-summary">
     <h2 id="s-summary">依頼の理解（三行）</h2>
     <ul class="summary">
-      <li>山波創苑専用の外構・造園CADを、オフラインで動く一つのWebアプリ（PCが主、iPhoneが従）として段階的に作る。2Dの図が唯一の正本で、3D・数量・見積・出力はそこから生まれる。</li>
+      <li>山波創苑専用の外構・造園CADを、Obsidian の非公開プラグイン（Windows と iPhone で同じもの）として段階的に作る。2Dの図が唯一の正本で、3D・数量・見積・出力はそこから生まれ、図面・写真・台帳は vault に置いて Obsidian Sync で運ぶ。</li>
       <li>部材カタログの物量では競わない。操作の軽さ、石・植栽・地形の細かさ、施主に見せる絵の質、寒冷高地と傾斜地の条件で勝つ。地域の数値は根拠を確かめてから既定値にする。</li>
-      <li>vault・領収書PWA・Excel・七十二候・縄文文様キットとデータをつなぎ、各段は「提案→裁可→実装→受け入れ確認→山彦班点検」の順で進める。</li>
+      <li>各段は「提案→裁可→実装→受け入れ確認→山彦班点検」。次は仕様の確定→iPhone 実機での試作計測→第一段。本番の vault では試さず、作業が消えないことを最優先にする。</li>
     </ul>
   </section>
 
@@ -149,47 +151,64 @@
 
     <div class="group g1">
       <div class="group-head">
-        <span class="tag">第一段の前に</span>
-        <span class="group-note">決まらないと設計の土台が変わる</span>
+        <span class="tag">実機検証と第一段の前に</span>
+        <span class="group-note">決まらないと試作も土台も組めない</span>
       </div>
       <ol class="items">
         <li class="is-now">
           <span class="num">1</span>
           <div class="body">
-            <h3>PCとスマホの間の受け渡し方式<span class="now">今回の質問</span></h3>
-            <p class="decides"><b>決まること：</b>保存の仕組み全体、プロジェクトファイルの形</p>
+            <h3>試験用 vault を PC と iPhone の間でどう運ぶか<span class="now">今回の質問</span></h3>
+            <p>Standard で同期できる vault は一つで、YAMANAMI-BRAIN が使っている。</p>
+            <p class="decides"><b>決まること：</b>実機検証の段取り、同期の受け入れ試験をどこで行うか</p>
           </div>
         </li>
         <li>
           <span class="num">2</span>
           <div class="body">
-            <h3>使う人の範囲と、機密の線引き</h3>
-            <p>晃さん一人か、職人や協力業者も開くか、施主に端末ごと渡して見せるか。施主名・住所・現場写真を Cloudflare 上に置いてよいか。</p>
-            <p class="decides"><b>決まること：</b>鍵（ログイン）の要否、同期の設計</p>
+            <h3>端末</h3>
+            <p>iPhone の機種と iOS の版（LiDAR の有無）、iPad の有無、Apple Pencil の有無、PC の画面の大きさ、各端末の Obsidian の版（競合ファイルの設定は 1.9.7 以上）。</p>
+            <p class="decides"><b>決まること：</b>描画の重さを測る基準機、画面の割り付け</p>
           </div>
         </li>
         <li>
           <span class="num">3</span>
           <div class="body">
-            <h3>領収書PWAの構成</h3>
-            <p>Cloudflare の何で配信しているか、鍵のかけ方、現場マスタの置き場所。ソースを見せてもらえるか。</p>
-            <p class="decides"><b>決まること：</b>配信と同期の比較提案の材料、同じ仕組みに揃えられるか</p>
+            <h3>PC の開発の道具と置き場所</h3>
+            <p>Node.js と git が入っているか（なければ入れる手順を書く）。リポジトリを置く場所（OneDrive の外。例 <code>C:\dev\nawabari</code>）。この GitHub のリポジトリ（<code>miniature-funicular</code>）を唯一の正本にしてよいか。ビルドと単体試験は私の側で済ませ、晃さんの PC では「取ってきて試験用 vault に置く」だけにする案を用意する。</p>
+            <p class="decides"><b>決まること：</b>晃さんの手順の量、版の管理</p>
           </div>
         </li>
         <li>
           <span class="num">4</span>
           <div class="body">
-            <h3>端末</h3>
-            <p>iPhone の機種と iOS の版（LiDAR の有無）、iPad の有無、Apple Pencil の有無、PC の画面の大きさ。</p>
-            <p class="decides"><b>決まること：</b>描画の重さを測る基準機、画面の割り付け</p>
+            <h3>OneDrive との二重同期の扱い</h3>
+            <p>このまま併用して対策を足すか、vault を OneDrive の外へ移して Obsidian Sync に一本化し、バックアップは別に取るか。あわせて、OneDrive の「ファイル オンデマンド」で vault のファイルがクラウドにしか無い状態になっていないか。</p>
+            <p class="decides"><b>決まること：</b>保存の書き方（まとめ書き・世代の置き方）、本番へ入れる条件</p>
           </div>
         </li>
         <li>
           <span class="num">5</span>
           <div class="body">
+            <h3>Obsidian Sync の現状</h3>
+            <p>各端末の設定（その他のファイル形式の同期／競合ファイルを作る／インストール済みプラグインの同期）と、今の使用容量（同期の設定画面に出る数字）。</p>
+            <p class="decides"><b>決まること：</b>容量の目安と、知らせる閾値の既定値</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">6</span>
+          <div class="body">
+            <h3>図面を置くフォルダ</h3>
+            <p>番号帯の規則のどこに置くか（「_」始まりの器か、90番台の運用か）。図面・写真・台帳・書き出し・世代の置き場所と、現場ノートの置き場所。</p>
+            <p class="decides"><b>決まること：</b>プラグインが書き込んでよい場所の限定</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">7</span>
+          <div class="body">
             <h3>現場IDの書式と現場マスタの項目</h3>
-            <p>実際のIDを数件。「見積額」をどう受け取るか（CSVの取り込みか、手入力か）。</p>
-            <p class="decides"><b>決まること：</b>プロジェクトファイルの鍵の形</p>
+            <p>領収書PWAの実際のIDを数件。「見積額」をどう受け取るか（CSVの取り込みか、手入力か）。</p>
+            <p class="decides"><b>決まること：</b>図面ファイルの名前と鍵、見積額の渡し方</p>
           </div>
         </li>
       </ol>
@@ -202,7 +221,7 @@
       </div>
       <ol class="items">
         <li>
-          <span class="num">6</span>
+          <span class="num">8</span>
           <div class="body">
             <h3>地積測量図の扱い</h3>
             <p>座標値（平面直角座標）を打ち込むことがあるか。測量図は PDF で来るか、紙か。</p>
@@ -210,7 +229,7 @@
           </div>
         </li>
         <li>
-          <span class="num">7</span>
+          <span class="num">9</span>
           <div class="body">
             <h3>建築士とのやりとり</h3>
             <p>相手の CAD（Jw_cad、AutoCAD、Vectorworks など）と、受け取った DXF の見本一つ。</p>
@@ -218,7 +237,7 @@
           </div>
         </li>
         <li>
-          <span class="num">8</span>
+          <span class="num">10</span>
           <div class="body">
             <h3>図面の決まり</h3>
             <p>よく使う用紙と縮尺、線の太さと文字の大きさの社内ルール、過去の図面の見本。</p>
@@ -226,7 +245,15 @@
           </div>
         </li>
         <li>
-          <span class="num">9</span>
+          <span class="num">11</span>
+          <div class="body">
+            <h3>図面枠の意匠</h3>
+            <p>山波創苑の色と書体（ロゴ、屋号の表記、書体の使用許諾）。書体は iPhone でも同じに見せるならプラグインに同梱するので、ファイルの大きさも確かめる。</p>
+            <p class="decides"><b>決まること：</b>図面枠の見た目、同梱する書体</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">12</span>
           <div class="body">
             <h3>最初に試す実案件</h3>
             <p>測量図・現況写真があり、高低差のある現場が一つあると良い。</p>
@@ -234,7 +261,7 @@
           </div>
         </li>
         <li>
-          <span class="num">10</span>
+          <span class="num">13</span>
           <div class="body">
             <h3>画面の言葉</h3>
             <p>現場で使う呼び名（据える・天端・見付・法面・刈込 など）。一覧がなければ私が案を作り、赤を入れてもらう。</p>
@@ -251,7 +278,7 @@
       </div>
       <ol class="items">
         <li>
-          <span class="num">11</span>
+          <span class="num">14</span>
           <div class="body">
             <h3>地域条件の数値の根拠</h3>
             <p>凍結深度、垂直積雪量、標高ごとの植物の適否を、どの資料・自治体基準で決めているか。推測の数値は既定値に入れない。</p>
@@ -259,7 +286,7 @@
           </div>
         </li>
         <li>
-          <span class="num">12</span>
+          <span class="num">15</span>
           <div class="body">
             <h3>vault の見本</h3>
             <p>10_辞書「分類: 植木」のノート数件、既存の現場ノート一件、frontmatter で使っている語彙。</p>
@@ -267,15 +294,15 @@
           </div>
         </li>
         <li>
-          <span class="num">13</span>
+          <span class="num">16</span>
           <div class="body">
             <h3>七十二候の実物</h3>
-            <p><code>getKou.js</code> と <code>saijiki.md</code>。</p>
-            <p class="decides"><b>決まること：</b>同じ結果になるかを確かめる試験</p>
+            <p><code>getKou.js</code> と <code>saijiki.md</code>。読んだうえで「読み込んで使う」か「移植して照合試験を行う」かを提案する。</p>
+            <p class="decides"><b>決まること：</b>候の判定の持ち方と、同じ結果になるかを確かめる試験</p>
           </div>
         </li>
         <li>
-          <span class="num">14</span>
+          <span class="num">17</span>
           <div class="body">
             <h3>見積・請求 Excel の実ファイル</h3>
             <p>列の並び、税と端数の扱い、諸経費の載せ方、単価表の現状。</p>
@@ -283,19 +310,19 @@
           </div>
         </li>
         <li>
-          <span class="num">15</span>
+          <span class="num">18</span>
           <div class="body">
-            <h3>意匠</h3>
-            <p>ブランドの色と書体（ロゴ、屋号の表記、書体の使用許諾）、縄文文様キットの実ファイル、施主向け提案の過去の見本。</p>
-            <p class="decides"><b>決まること：</b>図面枠・プレゼンボード・表現の方向</p>
+            <h3>施主に見せる場面</h3>
+            <p>縄文文様キットの実ファイル、施主向け提案の過去の見本。現場でスマホを施主に渡して3Dを見せるとき、他の現場や金額が見えない「見せる画面」が要るか。</p>
+            <p class="decides"><b>決まること：</b>プレゼンボードと表現の方向、見せるときの表示の範囲</p>
           </div>
         </li>
         <li>
-          <span class="num">16</span>
+          <span class="num">19</span>
           <div class="body">
             <h3>運用</h3>
-            <p>このリポジトリ（GitHub の <code>miniature-funicular</code>）を唯一の正本にしてよいか。Windows 側の置き場所（OneDrive の外）。山彦班の起動のしかた。状態語彙（種袋・育苗床・接ぎ木床・花壇・休眠棚）の意味にずれがないか。</p>
-            <p class="decides"><b>決まること：</b>版の管理と点検の段取り</p>
+            <p>山彦班の起動のしかた（別のセッションを晃さんが立てるか）。状態語彙（種袋・育苗床・接ぎ木床・花壇・休眠棚）の意味にずれがないか。</p>
+            <p class="decides"><b>決まること：</b>点検の段取り、機能台帳の書き方</p>
           </div>
         </li>
       </ol>
@@ -305,48 +332,40 @@
   <section aria-labelledby="s-q">
     <h2 id="s-q">今回の質問</h2>
     <div class="question">
-      <p class="q">PC とスマホの間で、現場のプロジェクトをどう受け渡しますか。</p>
-      <p class="note">どの方式でも、各端末の中では自動保存し、iPhone ではホーム画面に追加したうえで永続保存を要求します。ここで決めるのは「端末と端末の間」の運び方です。</p>
+      <p class="q">試験用の vault を、PC と iPhone の間でどう運びますか。</p>
+      <p class="premise">詰まっている点：Obsidian Sync の Standard で同期できる vault は一つ（Plus は十）で、その一つは YAMANAMI-BRAIN が使っています。一方、約束では本番の vault で試しません。このままでは、試作を iPhone の試験用 vault へ届ける道がありません。（出典：<a href="https://obsidian.md/help/Plans+and+storage+limits">Obsidian Help「Plans and storage limits」</a>）</p>
 
       <div class="options">
-        <div class="opt">
-          <div class="opt-head"><span class="opt-no">一</span><h3>手で運ぶ</h3></div>
-          <dl>
-            <dt>仕組み</dt><dd>「書き出す」で一現場を一つのファイルにし、OneDrive や iCloud Drive で運んで、相手の端末で「読み込む」。</dd>
-            <dt>良い点</dt><dd>サーバ不要で費用なし。施主の情報が晃さんの手元から出ない。早く作れる。</dd>
-            <dt>弱い点</dt><dd>運び忘れると古い図で現場に立つ。どちらが新しいか分からなくなる。iPhone では「ファイル」アプリを経由する数手が毎回かかる。スマホを失くすと、最後に運んだ後の作業は戻らない。</dd>
-          </dl>
-        </div>
-
-        <div class="opt">
-          <div class="opt-head"><span class="opt-no">二</span><h3>自動で揃える</h3></div>
-          <dl>
-            <dt>仕組み</dt><dd>Cloudflare 上に晃さん専用の保管庫を置く。開けば最新が届き、直せば送られる。電波のない現場では手元に貯め、つながったら送る。</dd>
-            <dt>良い点</dt><dd>運ぶ手間がない。端末を失くしても作業が残る。写真も同じ道で渡る。</dd>
-            <dt>弱い点</dt><dd>作る量が増え、第一段が遅れる。晃さんだけが入れる鍵が要る。同じ現場を二台で同時に直したときの決まりが要る。写真が増えると保管料がかかる場合がある（料金は調べてから提示します）。</dd>
-          </dl>
-        </div>
-
         <div class="opt rec">
-          <div class="opt-head"><span class="opt-no">三</span><h3>段階で足す</h3><span class="rec-mark">推奨</span></div>
+          <div class="opt-head"><span class="opt-no">一</span><h3>開発の間だけ Plus に上げる</h3><span class="rec-mark">推奨</span></div>
           <dl>
-            <dt>仕組み</dt><dd>第一段は方式一で始める。ファイルの中身は最初から同期できる形（部材ごとの通し番号と更新時刻）にしておき、作図の核が気持ちよくなった後に方式二を足す。方式二は機能台帳に「種袋」で載せておく。</dd>
-            <dt>良い点</dt><dd>作図の核に同期の工事を混ぜない。形式を先に決めるので、後で足しても作り直しがない。</dd>
-            <dt>弱い点</dt><dd>第一段の間は手で運ぶ手間が残る。</dd>
+            <dt>仕組み</dt><dd>Plus にして、試験用 vault を二つ目の同期先として PC と iPhone につなぐ。プラグインは本番と同じく「インストール済みプラグインの同期」で iPhone に届く。</dd>
+            <dt>良い点</dt><dd>本番と同じ道で試せる。描画の重さだけでなく、同期の受け入れ基準（スマホで描いた図が PC で欠けずに開けるか、競合しても消えないか）を、本番に触れずに毎段確かめられる。晃さんの手順は「三つのファイルを PC の試験用 vault に置く」だけ。</dd>
+            <dt>弱い点</dt><dd>月額の差額がかかる（金額は公式の料金表で確かめてください）。上限が緩いので Standard の 5MB を超えても同期では気づけない。これはプラグイン自身が Standard の上限を物差しに容量を測って知らせる作りで補い、本番へ入れる前に Standard の条件で一度確かめる。Standard に戻すときは試験用の同期先を片づけてから戻す。</dd>
+          </dl>
+        </div>
+
+        <div class="opt">
+          <div class="opt-head"><span class="opt-no">二</span><h3>費用をかけず、iPhone へは補助プラグインで届ける</h3></div>
+          <dl>
+            <dt>仕組み</dt><dd>iPhone に端末の中だけの試験用 vault を作り、GitHub からプラグインを取り込む補助プラグイン（BRAT）を入れる。私が GitHub に置いた版を、iPhone が直接取りに行く。</dd>
+            <dt>良い点</dt><dd>費用なし。PC を経由せずに iPhone の版を更新できる。</dd>
+            <dt>弱い点</dt><dd>図面は PC と iPhone の間で運べないので、描画の重さは測れても、同期の受け入れ基準は試せない（その試験を後で Plus にして行うか、本番で行うかの判断が残る）。非公開のリポジトリなので、iPhone の BRAT に GitHub の読み取り用の鍵を入れる必要がある。試験用 vault に、本番にない補助プラグインが一つ増える。</dd>
           </dl>
         </div>
       </div>
 
-      <p class="premise">推奨の前提：使うのは晃さん一人で、同じ現場を PC とスマホで同時には直さない（事務所で描く→現場で直す→事務所で仕上げる、の交互）。前提が違う場合や、領収書PWAにすでに鍵と保管庫がある場合は、方式二を早めるほうが得です。</p>
-      <p class="answer">「一」「二」「三」のどれかでお答えください。前提が違う場合は、その点だけ書き添えてください。</p>
+      <p class="note">外した案：本番 vault の中に試験用フォルダを作る（本番で試さない約束に反する）。iCloud Drive に試験用 vault を置く（三つ目の同期が加わり、二重同期の問題を増やす）。iPhone の「ファイル」アプリで手で入れる（プラグインの置き場所 <code>.obsidian</code> は「ファイル」アプリに表示されない）。</p>
+      <p class="answer">「一」か「二」でお答えください。一の場合、Plus への切り替えと二つ目の同期先の作り方は、次の回で画面の順に書きます。</p>
     </div>
   </section>
 
   <section aria-labelledby="s-done">
     <h2 id="s-done">この回でしたこと</h2>
     <ul class="done">
-      <li>リポジトリに、この確認事項（<code>docs/stage0-kakunin.html</code>）と変更履歴（<code>CHANGELOG.md</code>）を置いた。コードは書いていない。</li>
-      <li>機能台帳はすべて「種袋」のまま。</li>
+      <li>甲案（Obsidian プラグイン）の裁可を受けて、この確認事項（<code>docs/stage0-kakunin.html</code>）を書き直した。Webアプリを前提にした問い（受け渡し方式、Cloudflare、領収書PWAの配信）は外し、同期・vault・開発の道具の問いを加えた。前の版は git の履歴に残っている。</li>
+      <li>Standard で同期できる vault が一つであることを、Obsidian の公式ヘルプで確かめた。</li>
+      <li>コードは書いていない。機能台帳はすべて「種袋」のまま。</li>
     </ul>
   </section>
 </div>
