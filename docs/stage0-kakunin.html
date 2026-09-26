@@ -1,0 +1,352 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>縄張り台 第0段</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  :root {
+    /* 苔石の地に墨。印は弁柄・黄土・藍（いずれも WCAG AA 以上） */
+    --ground: #f2f3f0;
+    --surface: #ffffff;
+    --ink: #1c211e;
+    --muted: #4a524d;
+    --rule: #cfd5d0;
+    --accent: #2f5d46;
+    --accent-soft: #e3ece6;
+    --p1: #8a3b25;
+    --p2: #7a5a12;
+    --p3: #2c4a6b;
+    --focus: #2f5d46;
+    --mincho: "Shippori Mincho", "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", serif;
+    --gothic: "Zen Kaku Gothic New", "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #151a17;
+      --surface: #1d2420;
+      --ink: #e6ebe7;
+      --muted: #aab5ae;
+      --rule: #34403a;
+      --accent: #8fc4a6;
+      --accent-soft: #24332b;
+      --p1: #e39a82;
+      --p2: #d9b565;
+      --p3: #9dbbe0;
+      --focus: #8fc4a6;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #151a17;
+    --surface: #1d2420;
+    --ink: #e6ebe7;
+    --muted: #aab5ae;
+    --rule: #34403a;
+    --accent: #8fc4a6;
+    --accent-soft: #24332b;
+    --p1: #e39a82;
+    --p2: #d9b565;
+    --p3: #9dbbe0;
+    --focus: #8fc4a6;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--gothic);
+    font-size: 16px;
+    line-height: 1.8;
+    padding-inline: 16px;
+    padding-block: 32px 64px;
+  }
+  .wrap { max-width: 46rem; margin-inline: auto; display: grid; gap: 48px; }
+  h1, h2 { font-family: var(--mincho); font-weight: 600; text-wrap: balance; line-height: 1.4; margin: 0; }
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.375rem; }
+  h3 { font-size: 1rem; font-weight: 700; margin: 0; }
+  p { margin: 0; }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  header { display: grid; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 20px; }
+  .eyebrow { font-size: 0.875rem; color: var(--muted); letter-spacing: 0.08em; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.875rem; color: var(--muted); }
+
+  section { display: grid; gap: 20px; }
+  .lead { color: var(--muted); max-width: 40rem; }
+
+  .summary { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .summary li { padding-left: 16px; border-left: 3px solid var(--accent); }
+
+  .group { display: grid; gap: 12px; }
+  .group-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .tag { font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 10px; border: 1.5px solid currentColor; border-radius: 3px; }
+  .g1 .tag { color: var(--p1); }
+  .g2 .tag { color: var(--p2); }
+  .g3 .tag { color: var(--p3); }
+  .group-note { font-size: 0.875rem; color: var(--muted); }
+
+  ol.items { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  ol.items li { display: grid; grid-template-columns: 2.25rem 1fr; gap: 4px 12px; padding-block: 14px; border-bottom: 1px solid var(--rule); }
+  .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); text-align: right; line-height: 1.8; }
+  .body { display: grid; gap: 4px; min-width: 0; }
+  .decides { font-size: 0.875rem; color: var(--muted); }
+  .decides b { font-weight: 500; color: var(--ink); }
+  .now { display: inline-block; margin-left: 8px; font-size: 0.75rem; font-weight: 700; color: var(--surface); background: var(--accent); padding: 1px 8px; border-radius: 3px; vertical-align: 2px; }
+  li.is-now { background: var(--accent-soft); }
+
+  .question { background: var(--surface); border: 2px solid var(--ink); border-radius: 4px; padding: 24px 20px; display: grid; gap: 20px; }
+  .q { font-family: var(--mincho); font-weight: 600; font-size: 1.25rem; line-height: 1.6; }
+  .note { font-size: 0.9375rem; color: var(--muted); }
+  .options { display: grid; gap: 16px; }
+  .opt { border: 1px solid var(--rule); border-radius: 4px; padding: 16px; display: grid; gap: 10px; }
+  .opt.rec { border: 2px solid var(--accent); }
+  .opt-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .opt-no { font-family: var(--mincho); font-weight: 600; font-size: 1.25rem; color: var(--accent); }
+  .rec-mark { font-size: 0.8125rem; font-weight: 700; color: var(--accent); }
+  dl { margin: 0; display: grid; grid-template-columns: 4.5em 1fr; gap: 6px 12px; font-size: 0.9375rem; }
+  dt { color: var(--muted); font-weight: 500; }
+  dd { margin: 0; }
+  .premise { border-left: 3px solid var(--p2); padding-left: 14px; font-size: 0.9375rem; }
+  .answer { font-weight: 700; }
+
+  .done { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 0.9375rem; }
+  .done li::before { content: "・"; color: var(--muted); }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.875em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+
+  @media (max-width: 480px) {
+    h1 { font-size: 1.625rem; }
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dd { margin-bottom: 6px; }
+    .question { padding: 20px 16px; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">山波創苑　外構CAD「縄張り台（仮称）」</p>
+    <h1>第0段　確認の回</h1>
+    <div class="meta">
+      <span>2026年9月26日</span>
+      <span>コードなし</span>
+      <span>質問は最後の一つだけ</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="s-summary">
+    <h2 id="s-summary">依頼の理解（三行）</h2>
+    <ul class="summary">
+      <li>山波創苑専用の外構・造園CADを、オフラインで動く一つのWebアプリ（PCが主、iPhoneが従）として段階的に作る。2Dの図が唯一の正本で、3D・数量・見積・出力はそこから生まれる。</li>
+      <li>部材カタログの物量では競わない。操作の軽さ、石・植栽・地形の細かさ、施主に見せる絵の質、寒冷高地と傾斜地の条件で勝つ。地域の数値は根拠を確かめてから既定値にする。</li>
+      <li>vault・領収書PWA・Excel・七十二候・縄文文様キットとデータをつなぎ、各段は「提案→裁可→実装→受け入れ確認→山彦班点検」の順で進める。</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="s-list">
+    <h2 id="s-list">確認事項（優先順）</h2>
+    <p class="lead">上ほど先に決めたいものです。上の答えで下の問いが変わることがあるので、一度に全部は聞かず、一つずつ伺います。資料で答えられるものは、ファイルを渡してもらえれば私が読み取ります。</p>
+
+    <div class="group g1">
+      <div class="group-head">
+        <span class="tag">第一段の前に</span>
+        <span class="group-note">決まらないと設計の土台が変わる</span>
+      </div>
+      <ol class="items">
+        <li class="is-now">
+          <span class="num">1</span>
+          <div class="body">
+            <h3>PCとスマホの間の受け渡し方式<span class="now">今回の質問</span></h3>
+            <p class="decides"><b>決まること：</b>保存の仕組み全体、プロジェクトファイルの形</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">2</span>
+          <div class="body">
+            <h3>使う人の範囲と、機密の線引き</h3>
+            <p>晃さん一人か、職人や協力業者も開くか、施主に端末ごと渡して見せるか。施主名・住所・現場写真を Cloudflare 上に置いてよいか。</p>
+            <p class="decides"><b>決まること：</b>鍵（ログイン）の要否、同期の設計</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">3</span>
+          <div class="body">
+            <h3>領収書PWAの構成</h3>
+            <p>Cloudflare の何で配信しているか、鍵のかけ方、現場マスタの置き場所。ソースを見せてもらえるか。</p>
+            <p class="decides"><b>決まること：</b>配信と同期の比較提案の材料、同じ仕組みに揃えられるか</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">4</span>
+          <div class="body">
+            <h3>端末</h3>
+            <p>iPhone の機種と iOS の版（LiDAR の有無）、iPad の有無、Apple Pencil の有無、PC の画面の大きさ。</p>
+            <p class="decides"><b>決まること：</b>描画の重さを測る基準機、画面の割り付け</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">5</span>
+          <div class="body">
+            <h3>現場IDの書式と現場マスタの項目</h3>
+            <p>実際のIDを数件。「見積額」をどう受け取るか（CSVの取り込みか、手入力か）。</p>
+            <p class="decides"><b>決まること：</b>プロジェクトファイルの鍵の形</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="group g2">
+      <div class="group-head">
+        <span class="tag">第一段の途中で</span>
+        <span class="group-note">作図の核を作りながら必要になる</span>
+      </div>
+      <ol class="items">
+        <li>
+          <span class="num">6</span>
+          <div class="body">
+            <h3>地積測量図の扱い</h3>
+            <p>座標値（平面直角座標）を打ち込むことがあるか。測量図は PDF で来るか、紙か。</p>
+            <p class="decides"><b>決まること：</b>座標の持ち方、下図の取り込み方</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">7</span>
+          <div class="body">
+            <h3>建築士とのやりとり</h3>
+            <p>相手の CAD（Jw_cad、AutoCAD、Vectorworks など）と、受け取った DXF の見本一つ。</p>
+            <p class="decides"><b>決まること：</b>書き出す DXF の版、受け入れ試験で開いて確かめる先</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">8</span>
+          <div class="body">
+            <h3>図面の決まり</h3>
+            <p>よく使う用紙と縮尺、線の太さと文字の大きさの社内ルール、過去の図面の見本。</p>
+            <p class="decides"><b>決まること：</b>図面枠と印刷の規則</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">9</span>
+          <div class="body">
+            <h3>最初に試す実案件</h3>
+            <p>測量図・現況写真があり、高低差のある現場が一つあると良い。</p>
+            <p class="decides"><b>決まること：</b>第一段の受け入れ試験の題材</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">10</span>
+          <div class="body">
+            <h3>画面の言葉</h3>
+            <p>現場で使う呼び名（据える・天端・見付・法面・刈込 など）。一覧がなければ私が案を作り、赤を入れてもらう。</p>
+            <p class="decides"><b>決まること：</b>ボタンと項目の名前</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="group g3">
+      <div class="group-head">
+        <span class="tag">第二段より前に</span>
+        <span class="group-note">今は資料の受け取りだけ</span>
+      </div>
+      <ol class="items">
+        <li>
+          <span class="num">11</span>
+          <div class="body">
+            <h3>地域条件の数値の根拠</h3>
+            <p>凍結深度、垂直積雪量、標高ごとの植物の適否を、どの資料・自治体基準で決めているか。推測の数値は既定値に入れない。</p>
+            <p class="decides"><b>決まること：</b>設定項目の既定値と、その出典表示</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">12</span>
+          <div class="body">
+            <h3>vault の見本</h3>
+            <p>10_辞書「分類: 植木」のノート数件、既存の現場ノート一件、frontmatter で使っている語彙。</p>
+            <p class="decides"><b>決まること：</b>樹種ライブラリの読み取り、現場ノートの書き出し</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">13</span>
+          <div class="body">
+            <h3>七十二候の実物</h3>
+            <p><code>getKou.js</code> と <code>saijiki.md</code>。</p>
+            <p class="decides"><b>決まること：</b>同じ結果になるかを確かめる試験</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">14</span>
+          <div class="body">
+            <h3>見積・請求 Excel の実ファイル</h3>
+            <p>列の並び、税と端数の扱い、諸経費の載せ方、単価表の現状。</p>
+            <p class="decides"><b>決まること：</b>見積出力の列合わせ</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">15</span>
+          <div class="body">
+            <h3>意匠</h3>
+            <p>ブランドの色と書体（ロゴ、屋号の表記、書体の使用許諾）、縄文文様キットの実ファイル、施主向け提案の過去の見本。</p>
+            <p class="decides"><b>決まること：</b>図面枠・プレゼンボード・表現の方向</p>
+          </div>
+        </li>
+        <li>
+          <span class="num">16</span>
+          <div class="body">
+            <h3>運用</h3>
+            <p>このリポジトリ（GitHub の <code>miniature-funicular</code>）を唯一の正本にしてよいか。Windows 側の置き場所（OneDrive の外）。山彦班の起動のしかた。状態語彙（種袋・育苗床・接ぎ木床・花壇・休眠棚）の意味にずれがないか。</p>
+            <p class="decides"><b>決まること：</b>版の管理と点検の段取り</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-q">
+    <h2 id="s-q">今回の質問</h2>
+    <div class="question">
+      <p class="q">PC とスマホの間で、現場のプロジェクトをどう受け渡しますか。</p>
+      <p class="note">どの方式でも、各端末の中では自動保存し、iPhone ではホーム画面に追加したうえで永続保存を要求します。ここで決めるのは「端末と端末の間」の運び方です。</p>
+
+      <div class="options">
+        <div class="opt">
+          <div class="opt-head"><span class="opt-no">一</span><h3>手で運ぶ</h3></div>
+          <dl>
+            <dt>仕組み</dt><dd>「書き出す」で一現場を一つのファイルにし、OneDrive や iCloud Drive で運んで、相手の端末で「読み込む」。</dd>
+            <dt>良い点</dt><dd>サーバ不要で費用なし。施主の情報が晃さんの手元から出ない。早く作れる。</dd>
+            <dt>弱い点</dt><dd>運び忘れると古い図で現場に立つ。どちらが新しいか分からなくなる。iPhone では「ファイル」アプリを経由する数手が毎回かかる。スマホを失くすと、最後に運んだ後の作業は戻らない。</dd>
+          </dl>
+        </div>
+
+        <div class="opt">
+          <div class="opt-head"><span class="opt-no">二</span><h3>自動で揃える</h3></div>
+          <dl>
+            <dt>仕組み</dt><dd>Cloudflare 上に晃さん専用の保管庫を置く。開けば最新が届き、直せば送られる。電波のない現場では手元に貯め、つながったら送る。</dd>
+            <dt>良い点</dt><dd>運ぶ手間がない。端末を失くしても作業が残る。写真も同じ道で渡る。</dd>
+            <dt>弱い点</dt><dd>作る量が増え、第一段が遅れる。晃さんだけが入れる鍵が要る。同じ現場を二台で同時に直したときの決まりが要る。写真が増えると保管料がかかる場合がある（料金は調べてから提示します）。</dd>
+          </dl>
+        </div>
+
+        <div class="opt rec">
+          <div class="opt-head"><span class="opt-no">三</span><h3>段階で足す</h3><span class="rec-mark">推奨</span></div>
+          <dl>
+            <dt>仕組み</dt><dd>第一段は方式一で始める。ファイルの中身は最初から同期できる形（部材ごとの通し番号と更新時刻）にしておき、作図の核が気持ちよくなった後に方式二を足す。方式二は機能台帳に「種袋」で載せておく。</dd>
+            <dt>良い点</dt><dd>作図の核に同期の工事を混ぜない。形式を先に決めるので、後で足しても作り直しがない。</dd>
+            <dt>弱い点</dt><dd>第一段の間は手で運ぶ手間が残る。</dd>
+          </dl>
+        </div>
+      </div>
+
+      <p class="premise">推奨の前提：使うのは晃さん一人で、同じ現場を PC とスマホで同時には直さない（事務所で描く→現場で直す→事務所で仕上げる、の交互）。前提が違う場合や、領収書PWAにすでに鍵と保管庫がある場合は、方式二を早めるほうが得です。</p>
+      <p class="answer">「一」「二」「三」のどれかでお答えください。前提が違う場合は、その点だけ書き添えてください。</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-done">
+    <h2 id="s-done">この回でしたこと</h2>
+    <ul class="done">
+      <li>リポジトリに、この確認事項（<code>docs/stage0-kakunin.html</code>）と変更履歴（<code>CHANGELOG.md</code>）を置いた。コードは書いていない。</li>
+      <li>機能台帳はすべて「種袋」のまま。</li>
+    </ul>
+  </section>
+</div>
