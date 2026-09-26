@@ -112,6 +112,10 @@
   .premise { border-left: 3px solid var(--p2); padding-left: 14px; font-size: 0.9375rem; }
   .answer { font-weight: 700; }
 
+  ol.steps { margin: 0; padding-left: 1.5em; display: grid; gap: 10px; }
+  ol.steps li { padding-left: 4px; }
+  .ok { color: var(--accent); font-weight: 500; }
+  .ng { color: var(--p1); font-weight: 500; }
   .done { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 0.9375rem; }
   .done li::before { content: "・"; color: var(--muted); }
   code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.875em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
@@ -155,18 +159,18 @@
         <span class="group-note">決まらないと試作も土台も組めない</span>
       </div>
       <ol class="items">
-        <li class="is-now">
+        <li>
           <span class="num">1</span>
           <div class="body">
-            <h3>試験用 vault を PC と iPhone の間でどう運ぶか<span class="now">今回の質問</span></h3>
-            <p>Standard で同期できる vault は一つで、YAMANAMI-BRAIN が使っている。</p>
+            <h3>試験用 vault を PC と iPhone の間でどう運ぶか<span class="now">決定：一</span></h3>
+            <p>開発の間だけ Plus に上げ、試験用 vault を二つ目の同期先にする（2026年9月26日 裁可）。手順は下の「試験用 vault の支度」。</p>
             <p class="decides"><b>決まること：</b>実機検証の段取り、同期の受け入れ試験をどこで行うか</p>
           </div>
         </li>
-        <li>
+        <li class="is-now">
           <span class="num">2</span>
           <div class="body">
-            <h3>端末</h3>
+            <h3>端末<span class="now">今回の質問</span></h3>
             <p>iPhone の機種と iOS の版（LiDAR の有無）、iPad の有無、Apple Pencil の有無、PC の画面の大きさ、各端末の Obsidian の版（競合ファイルの設定は 1.9.7 以上）。</p>
             <p class="decides"><b>決まること：</b>描画の重さを測る基準機、画面の割り付け</p>
           </div>
@@ -329,43 +333,80 @@
     </div>
   </section>
 
+  <section aria-labelledby="s-tejun">
+    <h2 id="s-tejun">試験用 vault の支度（決定「一」の手順）</h2>
+    <p class="lead">本番の YAMANAMI-BRAIN には一切触りません。Obsidian の画面の言葉は、日本語表示と英語表示の両方を書いています。見当たらない項目があれば、その画面の写真を送ってください。当て推量で先へ進まないでください。</p>
+
+    <div class="group">
+      <h3>一　Plus に上げる（PC のブラウザ）</h3>
+      <ol class="steps">
+        <li>ブラウザで <code>https://obsidian.md/account</code> を開き、Obsidian のアカウントでログインする。</li>
+        <li>Sync の欄で、プランを変える操作（英語表示では「Change plan」や「Upgrade」）を押し、Plus を選んで支払いを確かめる。</li>
+        <li><span class="ok">成功：</span>Sync の欄が Plus、容量が 10 GB になっている。</li>
+        <li><span class="ng">失敗したら：</span>ページを再読み込みする。変わらなければ支払い方法の欄と、届いた確認メールを見る。</li>
+      </ol>
+    </div>
+
+    <div class="group">
+      <h3>二　PC に試験用 vault の置き場所を作る（PowerShell）</h3>
+      <ol class="steps">
+        <li>スタートボタンを右クリック →「ターミナル」または「Windows PowerShell」を開く。</li>
+        <li>次の一行を打って Enter：<br><code>New-Item -ItemType Directory -Path C:\nawabari-shiken</code></li>
+        <li><span class="ok">成功：</span><code>Directory: C:\</code> の下に <code>nawabari-shiken</code> と表示される。OneDrive の外（<code>C:\Users\…\OneDrive</code> の下ではない）なので、二重同期に巻き込まれない。</li>
+        <li><span class="ng">失敗したら：</span>「既に存在します」と出たら、そのまま次へ進んでよい。「アクセスが拒否されました」と出たら、その文面を送ってください。</li>
+      </ol>
+    </div>
+
+    <div class="group">
+      <h3>三　PC で試験用 vault を作り、同期につなぐ（Obsidian）</h3>
+      <ol class="steps">
+        <li>Obsidian の左下の保管庫名を押す →「保管庫を管理…」（Manage vaults…）。</li>
+        <li>「新しい保管庫を作成」（Create new vault）→ 名前に <code>縄張り台-試験</code>、場所に <code>C:\nawabari-shiken</code> を選んで「作成」。新しい窓で試験用 vault が開く。</li>
+        <li>設定（左下の歯車）→「コアプラグイン」（Core plugins）→「同期」（Sync）をオン。</li>
+        <li>設定 →「同期」→ リモート保管庫の「選択」（Choose）→「新しい保管庫を作成」（Create new vault）。名前は <code>縄張り台-試験</code>。暗号化のパスワードを決め、紙か領収書PWAとは別の安全な場所に書き留める（忘れると中身を戻せない）。「作成」→「接続」（Connect）。</li>
+        <li>同じ「同期」の画面で、次をオンにする：「その他のファイル形式」（Sync all other types）、「インストール済みのコミュニティプラグイン」（Installed community plugins）、「有効なコミュニティプラグインの一覧」（Active community plugin list）。競合の解決は「競合ファイルを作る」（Create conflict file）にする。</li>
+        <li>設定 →「コミュニティプラグイン」（Community plugins）→「制限モードをオフにする」（Turn on community plugins）。</li>
+        <li><span class="ok">成功：</span>窓の右下の同期の印が、くるくる回った後に緑の✓になる。</li>
+        <li><span class="ng">失敗したら：</span>印が赤や黄のままなら、印を押して出る文面をそのまま送ってください。</li>
+      </ol>
+    </div>
+
+    <div class="group">
+      <h3>四　iPhone に同じ vault を開く（Obsidian）</h3>
+      <ol class="steps">
+        <li>Obsidian を開き、左の引き出しを出して保管庫名を押す →「保管庫を管理」（Manage vaults）→「新しい保管庫を作成」（Create new vault）。</li>
+        <li>名前は <code>縄張り台-試験</code>。「iCloud に保存」（Store in iCloud）は<b>オフ</b>にして「作成」。</li>
+        <li>設定 →「コアプラグイン」→「同期」をオン →「同期」→ リモート保管庫の「選択」→ 一覧の <code>縄張り台-試験</code> →「接続」→ 三で決めたパスワードを入れる。</li>
+        <li>三の 5・6 と同じ項目を、iPhone 側でもオンにする（これらは端末ごとの設定）。</li>
+      </ol>
+    </div>
+
+    <div class="group">
+      <h3>五　通るか確かめる</h3>
+      <ol class="steps">
+        <li>PC の試験用 vault でノート「同期確認」を作り、「PC から」と書く。</li>
+        <li><span class="ok">成功：</span>一分ほどで iPhone の試験用 vault に「同期確認」が出る。iPhone で「iPhone から」と書き足すと、PC にも出る。</li>
+        <li><span class="ng">失敗したら：</span>両方の端末で、同期の設定画面のリモート保管庫の名前が <code>縄張り台-試験</code> になっているかを見る（YAMANAMI-BRAIN になっていたら、そこで止めて連絡してください）。</li>
+        <li>確かめ終えたら「同期確認」は消してよい。</li>
+      </ol>
+    </div>
+  </section>
+
   <section aria-labelledby="s-q">
     <h2 id="s-q">今回の質問</h2>
     <div class="question">
-      <p class="q">試験用の vault を、PC と iPhone の間でどう運びますか。</p>
-      <p class="premise">詰まっている点：Obsidian Sync の Standard で同期できる vault は一つ（Plus は十）で、その一つは YAMANAMI-BRAIN が使っています。一方、約束では本番の vault で試しません。このままでは、試作を iPhone の試験用 vault へ届ける道がありません。（出典：<a href="https://obsidian.md/help/Plans+and+storage+limits">Obsidian Help「Plans and storage limits」</a>）</p>
-
-      <div class="options">
-        <div class="opt rec">
-          <div class="opt-head"><span class="opt-no">一</span><h3>開発の間だけ Plus に上げる</h3><span class="rec-mark">推奨</span></div>
-          <dl>
-            <dt>仕組み</dt><dd>Plus にして、試験用 vault を二つ目の同期先として PC と iPhone につなぐ。プラグインは本番と同じく「インストール済みプラグインの同期」で iPhone に届く。</dd>
-            <dt>良い点</dt><dd>本番と同じ道で試せる。描画の重さだけでなく、同期の受け入れ基準（スマホで描いた図が PC で欠けずに開けるか、競合しても消えないか）を、本番に触れずに毎段確かめられる。晃さんの手順は「三つのファイルを PC の試験用 vault に置く」だけ。</dd>
-            <dt>弱い点</dt><dd>月額の差額がかかる（金額は公式の料金表で確かめてください）。上限が緩いので Standard の 5MB を超えても同期では気づけない。これはプラグイン自身が Standard の上限を物差しに容量を測って知らせる作りで補い、本番へ入れる前に Standard の条件で一度確かめる。Standard に戻すときは試験用の同期先を片づけてから戻す。</dd>
-          </dl>
-        </div>
-
-        <div class="opt">
-          <div class="opt-head"><span class="opt-no">二</span><h3>費用をかけず、iPhone へは補助プラグインで届ける</h3></div>
-          <dl>
-            <dt>仕組み</dt><dd>iPhone に端末の中だけの試験用 vault を作り、GitHub からプラグインを取り込む補助プラグイン（BRAT）を入れる。私が GitHub に置いた版を、iPhone が直接取りに行く。</dd>
-            <dt>良い点</dt><dd>費用なし。PC を経由せずに iPhone の版を更新できる。</dd>
-            <dt>弱い点</dt><dd>図面は PC と iPhone の間で運べないので、描画の重さは測れても、同期の受け入れ基準は試せない（その試験を後で Plus にして行うか、本番で行うかの判断が残る）。非公開のリポジトリなので、iPhone の BRAT に GitHub の読み取り用の鍵を入れる必要がある。試験用 vault に、本番にない補助プラグインが一つ増える。</dd>
-          </dl>
-        </div>
-      </div>
-
-      <p class="note">外した案：本番 vault の中に試験用フォルダを作る（本番で試さない約束に反する）。iCloud Drive に試験用 vault を置く（三つ目の同期が加わり、二重同期の問題を増やす）。iPhone の「ファイル」アプリで手で入れる（プラグインの置き場所 <code>.obsidian</code> は「ファイル」アプリに表示されない）。</p>
-      <p class="answer">「一」か「二」でお答えください。一の場合、Plus への切り替えと二つ目の同期先の作り方は、次の回で画面の順に書きます。</p>
+      <p class="q">実機検証の基準にする iPhone の機種、iOS の版、Obsidian の版を教えてください。</p>
+      <p class="note">見る場所：iPhone の「設定」→「一般」→「情報」に機種名と iOS のバージョン。Obsidian の版は、Obsidian の「設定」→「一般」の「現在のバージョン」（Current version）。PC 側の Obsidian の版も、同じ場所で分かれば添えてください。</p>
+      <p class="premise">これで決まること：描画の重さを測る基準機と、試作で測る項目の目標値（数千個の図形を置いたときのパン・ズームの滑らかさなど）。競合ファイルの設定は Obsidian 1.9.7 以上で使えるので、版が古ければ更新を先にお願いします。</p>
     </div>
   </section>
 
   <section aria-labelledby="s-done">
     <h2 id="s-done">この回でしたこと</h2>
     <ul class="done">
-      <li>甲案（Obsidian プラグイン）の裁可を受けて、この確認事項（<code>docs/stage0-kakunin.html</code>）を書き直した。Webアプリを前提にした問い（受け渡し方式、Cloudflare、領収書PWAの配信）は外し、同期・vault・開発の道具の問いを加えた。前の版は git の履歴に残っている。</li>
-      <li>Standard で同期できる vault が一つであることを、Obsidian の公式ヘルプで確かめた。</li>
-      <li>コードは書いていない。機能台帳はすべて「種袋」のまま。</li>
+      <li>確認事項1を「決定：一（開発の間だけ Plus）」とし、試験用 vault の支度の手順を書いた。</li>
+      <li>今回の質問を確認事項2（端末）に進めた。</li>
+      <li>コードは書いていない。機能台帳はすべて「種袋」のまま。前の回の質問と選択肢は git の履歴に残っている。</li>
     </ul>
   </section>
 </div>

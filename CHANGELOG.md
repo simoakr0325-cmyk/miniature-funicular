@@ -4,6 +4,12 @@
 
 ## 未公開
 
+### 第0段（確認の回・三）— 2026-09-26
+
+- 決定：確認事項1「試験用 vault の運び方」は一（開発の間だけ Obsidian Sync を Plus に上げ、試験用 vault を二つ目の同期先にする）。
+- 追加：`docs/stage0-kakunin.html` に試験用 vault の支度の手順（Plus への切り替え、PC と iPhone での vault 作成と同期の設定、通るかの確認）。
+- 変更：今回の質問を確認事項2（基準にする iPhone の機種・iOS・Obsidian の版）に進めた。
+
 ### 第0段（確認の回・改訂）— 2026-09-26
 
 - 変更：甲案（Obsidian プラグイン）の裁可を受けて `docs/stage0-kakunin.html` を書き直した。確認事項を19件に組み直し、最優先の質問を「試験用 vault を PC と iPhone の間でどう運ぶか」に替えた（Standard で同期できる vault は一つのため）。
