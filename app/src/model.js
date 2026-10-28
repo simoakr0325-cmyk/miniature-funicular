@@ -53,8 +53,19 @@ export function createDoc({ siteId = '', siteName = '' } = {}) {
     updatedAt: t,
     settings: { grid: 100, gridOn: true, hiddenLayers: [] },
     elements: [],
+    underlays: [],
   };
 }
+
+// 下図の置き方。画像そのものは blob（中身の指紋）で引く。
+export function createUnderlay({ name, blob, mime, w, h, x = 0, y = 0, s = 1, rot = 0, paperMmPerPx = null }) {
+  return {
+    id: newId(), name, blob, mime, w, h, x, y, s, rot, paperMmPerPx,
+    opacity: 0.6, visible: true, updatedAt: now(),
+  };
+}
+
+export const liveUnderlays = (doc) => (doc.underlays || []).filter((u) => !u.deleted);
 
 export function createElement(kind, pts, extra = {}) {
   const def = KINDS[kind];
@@ -92,7 +103,9 @@ export function touch(el, t = now()) {
   return el;
 }
 
+// 消した印。部材は形を空にして種類だけ残す。下図は id だけ残す。
 export function tombstone(el, t = now()) {
+  if (!el.kind) return { id: el.id, deleted: true, updatedAt: t };
   return { id: el.id, kind: el.kind, pts: [], props: {}, deleted: true, updatedAt: t };
 }
 
@@ -121,14 +134,13 @@ export function applySnapshot(currentEls, targetEls, t = now()) {
   return result;
 }
 
-// 同じ現場の二つの版を部材単位で合わせる。新しい時刻の方を採る。
+// 二つの並びを id ごとに合わせる。新しい時刻の方を採り、
 // 時刻が同じで中身が違うときは incoming を採る。
-export function mergeDocs(local, incoming) {
-  if (local.id !== incoming.id) throw new Error('別の図どうしは合わせられません');
-  const byId = new Map(local.elements.map((e) => [e.id, e]));
-  const order = local.elements.map((e) => e.id);
+function mergeList(localList = [], incomingList = []) {
+  const byId = new Map(localList.map((e) => [e.id, e]));
+  const order = localList.map((e) => e.id);
   let changed = 0;
-  for (const inc of incoming.elements) {
+  for (const inc of incomingList) {
     const loc = byId.get(inc.id);
     if (!loc) {
       byId.set(inc.id, inc);
@@ -139,6 +151,15 @@ export function mergeDocs(local, incoming) {
       changed++;
     }
   }
+  return { list: order.map((id) => structuredClone(byId.get(id))), changed };
+}
+
+// 同じ現場の二つの版を、部材・下図の単位で合わせる。
+export function mergeDocs(local, incoming) {
+  if (local.id !== incoming.id) throw new Error('別の図どうしは合わせられません');
+  const els = mergeList(local.elements, incoming.elements);
+  const uls = mergeList(local.underlays, incoming.underlays);
+  const changed = els.changed + uls.changed;
   const metaFrom = incoming.updatedAt > local.updatedAt ? incoming : local;
   const merged = {
     ...local,
@@ -147,7 +168,8 @@ export function mergeDocs(local, incoming) {
     settings: { ...local.settings, ...metaFrom.settings },
     createdAt: local.createdAt < incoming.createdAt ? local.createdAt : incoming.createdAt,
     updatedAt: local.updatedAt > incoming.updatedAt ? local.updatedAt : incoming.updatedAt,
-    elements: order.map((id) => structuredClone(byId.get(id))),
+    elements: els.list,
+    underlays: uls.list,
   };
   return { doc: merged, changed };
 }
@@ -167,6 +189,15 @@ export function normalizeDoc(raw) {
       for (const k of Object.keys(props)) if (NUMERIC_PROPS.has(k) && props[k] !== '') props[k] = Number(props[k]) || 0;
       return { ...e, pts: (e.pts || []).map((p) => [Number(p[0]), Number(p[1])]), props, updatedAt: e.updatedAt || doc.updatedAt };
     });
+  doc.underlays = (Array.isArray(raw.underlays) ? raw.underlays : [])
+    .filter((u) => u && typeof u.id === 'string' && (u.deleted || (typeof u.blob === 'string' && u.w > 0 && u.h > 0 && u.s > 0)))
+    .map((u) => (u.deleted ? { id: u.id, deleted: true, updatedAt: u.updatedAt || doc.updatedAt } : {
+      ...u,
+      x: Number(u.x) || 0, y: Number(u.y) || 0, s: Number(u.s), rot: Number(u.rot) || 0,
+      opacity: u.opacity >= 0 && u.opacity <= 1 ? Number(u.opacity) : 0.6,
+      visible: u.visible !== false,
+      updatedAt: u.updatedAt || doc.updatedAt,
+    }));
   return doc;
 }
 

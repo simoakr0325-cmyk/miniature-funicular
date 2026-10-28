@@ -235,3 +235,59 @@ export function handlesOf(el) {
   if (def.geom === 'circle') hs.push({ p: [el.pts[0][0] + el.r, el.pts[0][1]], radius: true });
   return hs;
 }
+
+// 下図は大きな画像なので、毎回作り直さず置き方だけ更新する。
+export function syncUnderlays(g, uls, v, urls, activeId) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const keep = new Set();
+  for (const u of uls) {
+    if (!u.visible) continue;
+    keep.add(u.id);
+    let node = g.querySelector(`[data-ul="${u.id}"]`);
+    const url = urls.get(u.blob);
+    const want = url ? 'image' : 'missing';
+    if (node && node.dataset.kind !== want) {
+      node.remove();
+      node = null;
+    }
+    if (!node) {
+      if (url) {
+        node = document.createElementNS(NS, 'image');
+        node.setAttribute('href', url);
+        node.setAttribute('preserveAspectRatio', 'none');
+      } else {
+        node = document.createElementNS(NS, 'g');
+        node.innerHTML = `<rect class="ul-missing"/><text class="lbl ul-missing-txt">下図の画像がこの端末にありません</text>`;
+      }
+      node.dataset.ul = u.id;
+      node.dataset.kind = want;
+      node.classList.add('ul');
+      g.append(node);
+    }
+    const [sx, sy] = v.toS([u.x, u.y]);
+    const k = u.s * v.scale;
+    node.setAttribute('transform', `translate(${f(sx)},${f(sy)}) rotate(${u.rot}) scale(${k})`);
+    node.classList.toggle('active', u.id === activeId);
+    if (url) {
+      node.setAttribute('width', u.w);
+      node.setAttribute('height', u.h);
+      node.setAttribute('opacity', u.opacity);
+    } else {
+      const r = node.querySelector('rect');
+      r.setAttribute('width', u.w);
+      r.setAttribute('height', u.h);
+      r.setAttribute('stroke-width', 1.5 / k);
+      const t = node.querySelector('text');
+      t.setAttribute('x', u.w / 2);
+      t.setAttribute('y', u.h / 2);
+      t.setAttribute('font-size', 13 / k);
+      t.setAttribute('stroke-width', 3 / k);
+    }
+  }
+  for (const node of [...g.children]) if (!keep.has(node.dataset.ul)) node.remove();
+  // 並び順を図の並びに合わせる（後に敷いたものが上）。
+  for (const u of uls) {
+    const node = g.querySelector(`[data-ul="${u.id}"]`);
+    if (node) g.append(node);
+  }
+}

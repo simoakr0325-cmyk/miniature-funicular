@@ -28,6 +28,8 @@ npm test
 | 動かす | 「選ぶ」で引く。Shift で 45°、Alt で吸着なし | 「選ぶ」で引く |
 | 画面を動かす | 何もない所を引く／スペース＋引く／ホイールで拡大縮小 | 指で引く／二本指でつまむ |
 | 元に戻す | Ctrl+Z／Ctrl+Y | 上の矢印 |
+| 下図を敷く | 道具の「下図」→ PDF か写真を選ぶ | 同じ |
+| 下図を合わせる | 右の欄で縮尺 1/n を入れる／「長さで合わせる」／「2点で合わせる」 | 「詳細」の欄から同じ |
 | そのほか | Delete 削除、Ctrl+D 複製、F 全体、G 方眼、Esc 取消 | 「詳細」で右の欄を出す |
 
 ## Obsidian との受け渡し
@@ -40,6 +42,8 @@ npm test
   - `src/model.js` 図のデータの形、合わせ（同期）、数量
   - `src/obsidian.js` ノートへの書き出しと読み込み
   - `src/vault.js` vault のフォルダへの直接書き込み、共有シート
+  - `src/underlay.js` 下図（PDF・写真の読み込み、縮尺・二点での合わせ）
   - `src/geometry.js` `src/hit.js` `src/render.js` `src/main.js` 計算・当たり判定・描画・操作
+- `app/vendor/pdfjs/` PDF を読むための pdf.js 4.10.38（Apache 2.0、電波なしで使うため同梱）
 - `tests/` 試験（`node --test`）
 - `docs/` 確認事項・機能台帳・受け渡しの説明

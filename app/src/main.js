@@ -3,15 +3,18 @@
 import {
   KINDS, LAYERS, NUMERIC_PROPS, createDoc, createElement, live, sortedForDraw, applySnapshot,
   mergeDocs, normalizeDoc, measure, quantities, formatQty, now, round, touch, tombstone, newId,
+  createUnderlay, liveUnderlays,
 } from './model.js';
 import { dist, orthoConstrain, pointAtDistance, rectFromCorners, bbox } from './geometry.js';
-import { makeView, renderScene, renderOverlay, handlesOf } from './render.js';
+import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from './render.js';
+import * as UL from './underlay.js';
 import { hitElement, findSnap } from './hit.js';
 import * as store from './storage.js';
 import * as vault from './vault.js';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('canvas');
+const ulG = $('underlays');
 const sceneG = $('scene');
 const overlayG = $('overlay');
 
@@ -19,6 +22,7 @@ const TOOLS = [
   { id: 'select', label: '選ぶ', key: 'V' },
   { id: 'shikichi' }, { id: 'tatemono' }, { id: 'hoso' }, { id: 'shokusaitai' }, { id: 'jumoku' },
   { id: 'keiseki' }, { id: 'hei' }, { id: 'enseki' }, { id: 'takasa' }, { id: 'sunpo' }, { id: 'moji' },
+  { id: 'underlay', label: '下図', action: true },
 ];
 
 const HINTS = {
@@ -39,7 +43,9 @@ const state = {
   selection: null,
   snap: null,
   lastTreeR: 750,
+  ulMode: null, // 下図の調整中：{ type: 'move' | 'length' | 'align', id, pts }
 };
+const blobUrls = new Map();
 let view = { cx: 0, cy: 0, scale: 0.1 };
 let undoStack = [];
 let redoStack = [];
@@ -57,21 +63,50 @@ function render() {
   frame = requestAnimationFrame(() => {
     frame = 0;
     const v = currentView();
+    syncUnderlays(ulG, liveUnderlays(state.doc), v, blobUrls, state.ulMode?.id);
     sceneG.innerHTML = renderScene(state, v);
-    overlayG.innerHTML = renderOverlay(state, v);
-    $('empty-hint').hidden = live(state.doc).length > 0 || !!state.draft;
+    overlayG.innerHTML = renderOverlay(state, v) + ulOverlay(v);
+    $('empty-hint').hidden = live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0 || !!state.draft || !!state.ulMode;
     $('btn-undo').disabled = !undoStack.length;
     $('btn-redo').disabled = !redoStack.length;
   });
 }
 
 function renderOverlayOnly() {
-  overlayG.innerHTML = renderOverlay(state, currentView());
+  const v = currentView();
+  overlayG.innerHTML = renderOverlay(state, v) + ulOverlay(v);
+}
+
+// 下図を合わせるときに押した点。下図の上の点は〇、図の上の点は□。
+function ulOverlay(v) {
+  const m = state.ulMode;
+  if (!m || !m.pts.length) return '';
+  const out = [];
+  m.pts.forEach((p, i) => {
+    const [x, y] = v.toS(p).map((n) => Math.round(n * 10) / 10);
+    const onImage = m.type === 'length' || i % 2 === 0;
+    out.push(onImage
+      ? `<circle class="ul-pick" cx="${x}" cy="${y}" r="7"/><path class="ul-pick" d="M${x - 11} ${y}H${x + 11}M${x} ${y - 11}V${y + 11}"/>`
+      : `<rect class="ul-pick target" x="${x - 7}" y="${y - 7}" width="14" height="14"/>`);
+    out.push(`<text class="lbl ul-pick-no" x="${x + 12}" y="${y - 10}">${m.type === 'length' ? i + 1 : ['A', 'A′', 'B', 'B′'][i]}</text>`);
+  });
+  if (m.type === 'length' && m.pts.length === 2) {
+    const [a, b] = m.pts.map((p) => v.toS(p));
+    out.push(`<path class="ul-pick" d="M${a[0]} ${a[1]}L${b[0]} ${b[1]}"/>`);
+  }
+  if (m.type === 'align') {
+    for (let i = 0; i + 1 < m.pts.length; i += 2) {
+      const [a, b] = [m.pts[i], m.pts[i + 1]].map((p) => v.toS(p));
+      out.push(`<path class="ul-pick dashed" d="M${a[0]} ${a[1]}L${b[0]} ${b[1]}"/>`);
+    }
+  }
+  return out.join('');
 }
 
 function fitView() {
   const els = live(state.doc);
   const pts = els.flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
+  for (const u of liveUnderlays(state.doc)) if (u.visible) pts.push(...UL.corners(u));
   const r = svg.getBoundingClientRect();
   if (!pts.length) {
     view = { cx: 6000, cy: 4500, scale: Math.min(r.width / 16000, r.height / 12000) || 0.05 };
@@ -97,6 +132,18 @@ function zoomAt(sp, factor) {
 // ---------- 編集と履歴 ----------
 
 const byId = (id) => state.doc.elements.find((e) => e.id === id && !e.deleted);
+const ulById = (id) => state.doc.underlays.find((u) => u.id === id && !u.deleted);
+
+// 履歴は部材と下図をまとめて持つ。
+const snapshot = () => structuredClone({ elements: state.doc.elements, underlays: state.doc.underlays });
+function restore(snap) {
+  state.doc.elements = snap.elements;
+  state.doc.underlays = snap.underlays;
+}
+function moveTo(target) {
+  state.doc.elements = applySnapshot(state.doc.elements, target.elements);
+  state.doc.underlays = applySnapshot(state.doc.underlays, target.underlays);
+}
 
 function pushHistory(before) {
   undoStack.push(before);
@@ -112,7 +159,7 @@ function changed({ panel = true } = {}) {
 }
 
 function commit(fn, opts) {
-  const before = structuredClone(state.doc.elements);
+  const before = snapshot();
   fn();
   pushHistory(before);
   changed(opts);
@@ -121,16 +168,18 @@ function commit(fn, opts) {
 function undo() {
   if (!undoStack.length) return;
   cancelDraft();
-  redoStack.push(structuredClone(state.doc.elements));
-  state.doc.elements = applySnapshot(state.doc.elements, undoStack.pop());
+  exitUlMode();
+  redoStack.push(snapshot());
+  moveTo(undoStack.pop());
   if (state.selection && !byId(state.selection)) state.selection = null;
   changed();
 }
 
 function redo() {
   if (!redoStack.length) return;
-  undoStack.push(structuredClone(state.doc.elements));
-  state.doc.elements = applySnapshot(state.doc.elements, redoStack.pop());
+  exitUlMode();
+  undoStack.push(snapshot());
+  moveTo(redoStack.pop());
   if (state.selection && !byId(state.selection)) state.selection = null;
   changed();
 }
@@ -171,6 +220,7 @@ function geomOf(kind) {
 }
 
 function setTool(id) {
+  exitUlMode();
   state.draft = null;
   cancelDraft();
   state.tool = id;
@@ -189,6 +239,10 @@ function cancelDraft() {
 }
 
 function updateCmd() {
+  if (state.ulMode) return updateUlCmd();
+  $('cmd-done').textContent = '確定';
+  $('cmd-cancel').textContent = '取消';
+  $('len').placeholder = '長さ mm';
   const d = state.draft;
   $('cmd').hidden = !d;
   if (!d) return;
@@ -301,8 +355,8 @@ svg.addEventListener('pointerdown', (e) => {
   const sp = spOf(e);
   pointers.set(e.pointerId, sp);
   if (pointers.size === 2) {
-    if (gesture?.type === 'move' || gesture?.type === 'vertex') {
-      state.doc.elements = gesture.before;
+    if (gesture?.before) {
+      restore(gesture.before);
       render();
     }
     const [a, b] = [...pointers.values()];
@@ -316,12 +370,19 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
   if (e.button !== 0) return;
+  if (state.ulMode) {
+    const ul = ulById(state.ulMode.id);
+    gesture = state.ulMode.type === 'move' && ul
+      ? { type: 'ulmove', start: sp, orig: { ...ul }, before: snapshot(), moved: false }
+      : { type: 'place', start: sp, view0: { ...view } };
+    return;
+  }
   if (state.tool === 'select') {
     const sel = byId(state.selection);
     if (sel) {
       const h = handlesOf(sel).find((h) => dist(v.toS(h.p), sp) <= (e.pointerType === 'touch' ? 16 : 9));
       if (h) {
-        gesture = { type: 'vertex', el: sel, h, before: structuredClone(state.doc.elements), moved: false };
+        gesture = { type: 'vertex', el: sel, h, before: snapshot(), moved: false };
         return;
       }
     }
@@ -329,7 +390,7 @@ svg.addEventListener('pointerdown', (e) => {
     const hit = hitElement(els, v, sp, e.pointerType === 'touch' ? 14 : 8);
     if (hit) {
       if (state.selection !== hit.id) select(hit.id);
-      gesture = { type: 'move', el: hit, startW: v.toW(sp), orig: structuredClone(hit.pts), before: structuredClone(state.doc.elements), moved: false, start: sp };
+      gesture = { type: 'move', el: hit, startW: v.toW(sp), orig: structuredClone(hit.pts), before: snapshot(), moved: false, start: sp };
     } else {
       gesture = { type: 'pan', start: sp, view0: { ...view }, clickClears: true };
     }
@@ -360,6 +421,15 @@ svg.addEventListener('pointermove', (e) => {
     view.cx = gesture.view0.cx - (sp[0] - gesture.start[0]) / view.scale;
     view.cy = gesture.view0.cy - (sp[1] - gesture.start[1]) / view.scale;
     if (dist(sp, gesture.start) > 4) gesture.clickClears = false;
+    render();
+    return;
+  }
+  if (gesture?.type === 'ulmove') {
+    if (!gesture.moved && dist(sp, gesture.start) < 4) return;
+    gesture.moved = true;
+    const o = gesture.orig;
+    const i = state.doc.underlays.findIndex((u) => u.id === o.id);
+    state.doc.underlays[i] = UL.moveBy(o, (sp[0] - gesture.start[0]) / view.scale, (sp[1] - gesture.start[1]) / view.scale);
     render();
     return;
   }
@@ -414,12 +484,17 @@ function endPointer(e) {
   gesture = null;
   if (e.type === 'pointercancel') {
     if (g.before) {
-      state.doc.elements = g.before;
+      restore(g.before);
       render();
     }
     return;
   }
   if (g.type === 'pan' && g.clickClears && state.selection) select(null);
+  if (g.type === 'ulmove' && g.moved) {
+    touch(ulById(g.orig.id));
+    pushHistory(g.before);
+    changed();
+  }
   if ((g.type === 'move' || g.type === 'vertex') && g.moved) {
     touch(g.el);
     state.snap = null;
@@ -427,7 +502,9 @@ function endPointer(e) {
     pushHistory(g.before);
     changed();
   }
-  if (g.type === 'place') {
+  if (g.type === 'place' && state.ulMode) {
+    ulPick(spOf(e), e);
+  } else if (g.type === 'place') {
     const s = snapAt(spOf(e), e);
     state.snap = null;
     placePoint(s.p);
@@ -475,7 +552,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target === $('len')) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && state.ulMode) {
+      e.preventDefault();
+      applyLengthCalibration($('len').value);
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       const t = $('len').value;
       if (!t.trim()) finishDraft();
@@ -505,7 +585,8 @@ document.addEventListener('keydown', (e) => {
   if (mod) return;
   switch (e.key) {
     case 'Escape':
-      if (state.draft?.pts.length) cancelDraft();
+      if (state.ulMode) exitUlMode();
+      else if (state.draft?.pts.length) cancelDraft();
       else if (state.tool !== 'select') setTool('select');
       else select(null);
       break;
@@ -607,6 +688,7 @@ function renderPanel() {
         ${field('現場名', d.siteName)}
       </form>
     </section>
+    ${underlayPanel()}
     <section class="psec">
       <h2>数量</h2>
       ${rows.length ? `<table class="qty"><tbody>${rows.map((r) => `<tr><th>${r.label}</th><td>${formatQty(r)}</td><td>${r.unit}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">部材を描くとここに出ます。</p>'}
@@ -630,6 +712,7 @@ function renderPanel() {
     updateSiteLabel();
     changed({ panel: false });
   });
+  bindUnderlayPanel(p);
   $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
@@ -711,6 +794,216 @@ function openDoc(doc, { fit = true } = {}) {
   renderPanel();
   if (fit) fitView();
   saveNow();
+  ensureBlobUrls();
+}
+
+// ---------- 下図 ----------
+
+async function ensureBlobUrls() {
+  let added = false;
+  for (const u of liveUnderlays(state.doc)) {
+    if (blobUrls.has(u.blob)) continue;
+    const blob = await store.getBlob(u.blob).catch(() => null);
+    if (blob) {
+      blobUrls.set(u.blob, URL.createObjectURL(blob));
+      added = true;
+    }
+  }
+  if (added) {
+    render();
+    if (!state.selection) renderPanel();
+  }
+}
+
+function updateUnderlay(id, fn, opts) {
+  const i = state.doc.underlays.findIndex((u) => u.id === id && !u.deleted);
+  if (i < 0) return;
+  try {
+    const next = fn(state.doc.underlays[i]);
+    commit(() => { state.doc.underlays[i] = touch({ ...next }); }, opts);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function addUnderlayFromFile(file) {
+  try {
+    let page = 1;
+    if (UL.isPdf(file)) {
+      toast('PDF を読んでいます…');
+      const n = await UL.pdfPageCount(file);
+      if (n > 1) {
+        const a = prompt(`この PDF は ${n} 頁あります。何頁目を敷きますか。`, '1');
+        if (a === null) return;
+        page = Math.min(Math.max(parseInt(a, 10) || 1, 1), n);
+      }
+    } else {
+      toast('写真を読んでいます…');
+    }
+    const r = await UL.readUnderlayFile(file, page);
+    await store.putBlob(r.hash, r.blob);
+    if (!blobUrls.has(r.hash)) blobUrls.set(r.hash, URL.createObjectURL(r.blob));
+    const v = currentView();
+    // PDF は仮に 1/250、写真は画面の幅の八割で敷く。あとで合わせる。
+    const sc = r.paperMmPerPx ? r.paperMmPerPx * 250 : (v.w * 0.8) / view.scale / r.w;
+    const ul = createUnderlay({
+      name: r.name, blob: r.hash, mime: r.mime, w: r.w, h: r.h, s: sc,
+      x: view.cx - (r.w * sc) / 2, y: view.cy - (r.h * sc) / 2, paperMmPerPx: r.paperMmPerPx,
+    });
+    const first = live(state.doc).length === 0;
+    setTool('select');
+    state.selection = null;
+    commit(() => state.doc.underlays.push(ul));
+    if (first) fitView();
+    toast(r.paperMmPerPx
+      ? '縮尺 1/250 で敷きました。違えば右の欄で縮尺を直すか「長さで合わせる」を使ってください'
+      : '写真を敷きました。「長さで合わせる」か「2点で合わせる」で大きさを合わせてください');
+    openPanelOnNarrow();
+  } catch (err) {
+    toast('下図を敷けませんでした：' + err.message);
+  }
+}
+
+function underlayPanel() {
+  const uls = liveUnderlays(state.doc);
+  const items = uls.map((u) => {
+    const n = UL.paperScaleOf(u);
+    return `<div class="ul-item${state.ulMode?.id === u.id ? ' active' : ''}" data-ul="${u.id}">
+      <label class="check ul-name"><input type="checkbox" data-act="visible" ${u.visible ? 'checked' : ''}><span>${escapeHtml(u.name)}</span></label>
+      ${blobUrls.has(u.blob) ? '' : '<p class="small warn">この端末に画像がありません。Obsidian から画像と一緒に読み込んでください。</p>'}
+      <label class="field"><span>濃さ</span><input type="range" min="0.1" max="1" step="0.05" value="${u.opacity}" data-act="opacity"></label>
+      ${n ? `<label class="field"><span>縮尺</span><span class="ratio">1 /<input type="text" inputmode="decimal" data-act="scale" value="${Math.round(n * 100) / 100}"></span></label>` : ''}
+      <label class="field"><span>向き<small>°</small></span><input type="text" inputmode="decimal" data-act="rot" value="${Math.round(u.rot * 100) / 100}"></label>
+      <div class="row">
+        <button type="button" data-act="move">動かす</button>
+        <button type="button" data-act="length">長さで合わせる</button>
+        <button type="button" data-act="align">2点で合わせる</button>
+        <button type="button" data-act="delete" class="danger">外す</button>
+      </div>
+    </div>`;
+  });
+  return `<section class="psec">
+    <h2>下図</h2>
+    ${items.join('')}
+    <button type="button" id="ul-add" class="${uls.length ? '' : 'primary'}">下図を敷く（測量図 PDF・写真）</button>
+    ${uls.length ? '<p class="muted small">下図は押しても選ばれません。「動かす」を押してから引きます。</p>' : ''}
+  </section>`;
+}
+
+function bindUnderlayPanel(p) {
+  $('ul-add').onclick = () => $('ul-input').click();
+  for (const item of p.querySelectorAll('.ul-item')) {
+    const id = item.dataset.ul;
+    item.addEventListener('click', (ev) => {
+      const act = ev.target.closest('button')?.dataset.act;
+      if (act === 'delete') updateUnderlay(id, (u) => tombstone(u));
+      else if (act) startUlMode(act, id);
+    });
+    item.addEventListener('input', (ev) => {
+      if (ev.target.dataset.act !== 'opacity') return;
+      const u = ulById(id);
+      u.opacity = Number(ev.target.value);
+      touch(u);
+      changed({ panel: false });
+    });
+    item.addEventListener('change', (ev) => {
+      const t = ev.target;
+      const num = Number(String(t.value).replace(/[０-９．－]/g, (c) => (c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))));
+      if (t.dataset.act === 'visible') updateUnderlay(id, (u) => ({ ...u, visible: t.checked }), { panel: false });
+      if (t.dataset.act === 'scale') {
+        if (!(num > 0)) return toast('縮尺は正の数で入れてください');
+        updateUnderlay(id, (u) => UL.setPaperScale(u, num), { panel: false });
+      }
+      if (t.dataset.act === 'rot') {
+        if (!Number.isFinite(num)) return toast('向きは数で入れてください');
+        updateUnderlay(id, (u) => UL.setRotation(u, num), { panel: false });
+      }
+    });
+  }
+}
+
+const UL_HINTS = {
+  move: () => '下図を引いて動かす。終わったら「終わる」',
+  length: (n) => (n < 2 ? `下図の上で、長さの分かる二点を押す（${n + 1} 点目）` : '二点の間の実際の長さ（mm）を入れて Enter'),
+  align: (n) => [
+    '下図の上の点 A を押す',
+    'A を重ねたい図の上の位置（A′）を押す。部材の角に吸い付きます',
+    '下図の上の点 B を押す（A から離れた点ほど正確）',
+    'B を重ねたい図の上の位置（B′）を押す',
+  ][n],
+};
+
+function startUlMode(type, id) {
+  setTool('select');
+  select(null);
+  const u = ulById(id);
+  if (!u) return;
+  if (!u.visible) updateUnderlay(id, (x) => ({ ...x, visible: true }));
+  state.ulMode = { type, id, pts: [], undoDepth: undoStack.length };
+  if (matchMedia('(max-width: 760px)').matches) togglePanel(false);
+  updateCmd();
+  renderPanel();
+  render();
+}
+
+function exitUlMode() {
+  if (!state.ulMode) return;
+  state.ulMode = null;
+  state.snap = null;
+  $('len').value = '';
+  updateCmd();
+  renderPanel();
+  render();
+}
+
+function updateUlCmd() {
+  const m = state.ulMode;
+  $('cmd').hidden = false;
+  $('cmd-hint').textContent = `下図：${UL_HINTS[m.type](m.pts.length)}`;
+  $('shape-switch').hidden = true;
+  const askLen = m.type === 'length' && m.pts.length === 2;
+  $('len').closest('label').hidden = !askLen;
+  $('len').placeholder = '実際の長さ mm';
+  $('cmd-done').hidden = m.type !== 'move';
+  $('cmd-done').disabled = false;
+  $('cmd-done').textContent = '終わる';
+  $('cmd-cancel').hidden = false;
+  $('cmd-cancel').textContent = m.type === 'move' ? '戻す' : 'やめる';
+  if (askLen) requestAnimationFrame(() => $('len').focus());
+}
+
+// 合わせるための点を打つ。下図の上の点は吸着させず、図の上の点は部材の角と方眼に吸い付ける。
+function ulPick(sp, e) {
+  const m = state.ulMode;
+  const onImage = m.type === 'length' || m.pts.length % 2 === 0;
+  const p = onImage ? currentView().toW(sp) : snapAt(sp, e).p;
+  if (m.type === 'length' && m.pts.length >= 2) return;
+  m.pts.push(p);
+  if (m.type === 'align' && m.pts.length === 4) {
+    const [a, a2, b, b2] = m.pts;
+    const id = m.id;
+    state.ulMode = null;
+    updateUnderlay(id, (u) => UL.alignTwoPoints(u, a, b, a2, b2));
+    updateCmd();
+    toast('下図を二点で合わせました');
+    return;
+  }
+  updateCmd();
+  renderOverlayOnly();
+}
+
+function applyLengthCalibration(text) {
+  const m = state.ulMode;
+  if (!m || m.type !== 'length' || m.pts.length < 2) return;
+  const len = Number(String(text).replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)));
+  if (!(len > 0)) return toast('長さは mm の数で入れてください');
+  const [a, b] = m.pts;
+  const id = m.id;
+  state.ulMode = null;
+  $('len').value = '';
+  updateUnderlay(id, (u) => UL.calibrateLength(u, a, b, len));
+  updateCmd();
+  toast('下図の大きさを合わせました');
 }
 
 // ---------- 現場の切り替え ----------
@@ -758,7 +1051,7 @@ async function showVault() {
   $('vault-folder').hidden = !canFolder;
   $('files-note').textContent = canFolder
     ? 'フォルダを使わずに、ノートのファイルを手で運ぶこともできます。'
-    : 'ノートのファイルを手で運びます。iPhone では「ファイルに保存」で iCloud Drive › Obsidian › vault の中へ保存し、読み込みもそこから選びます。';
+    : 'ノートのファイルを手で運びます。iPhone では「ファイルに保存」で iCloud Drive › Obsidian › vault の中へ保存し、読み込みもそこから選びます。下図があるときは、ノートと一緒に「下図_…」の画像も選んでください。';
   if (canFolder) {
     const h = await vault.getFolder();
     $('folder-name').textContent = h ? h.name : '未選択';
@@ -787,7 +1080,7 @@ async function refreshNoteList(handle, ask = true) {
       </li>`).join('') : '<li class="muted">まだありません。</li>';
     ul.onclick = (ev) => {
       const b = ev.target.closest('[data-note]');
-      if (b) importDocs([notes[Number(b.dataset.note)]]).then(() => $('dlg-vault').close());
+      if (b) importDocs([notes[Number(b.dataset.note)]], handle).then(() => $('dlg-vault').close());
     };
   } catch (err) {
     ul.innerHTML = `<li class="muted">${escapeHtml(err.message)}</li>`;
@@ -795,9 +1088,12 @@ async function refreshNoteList(handle, ask = true) {
 }
 
 // 読み込んだ図を開く。同じ図が端末にあれば合わせる。
-async function importDocs(items) {
+async function importDocs(items, folder = null) {
   const good = items.filter((i) => i.doc);
   for (const bad of items.filter((i) => i.error)) toast(`${bad.name}：${bad.error}`);
+  let missing = good.flatMap((i) => i.missing || []);
+  if (folder) for (const i of good) missing.push(...(await vault.pullBlobs(folder, i.doc)));
+  missing = [...new Set(missing)];
   if (!good.length) return;
   let last = null;
   let msg = '';
@@ -817,7 +1113,8 @@ async function importDocs(items) {
   openDoc(normalizeDoc(last));
   await store.setKV('synced:' + last.id, last.updatedAt);
   updateUnsynced();
-  toast(good.length > 1 ? `${good.length} 件のノートを読み込みました` : msg);
+  toast((good.length > 1 ? `${good.length} 件のノートを読み込みました` : msg)
+    + (missing.length ? `。下図の画像 ${missing.length} 枚が見つかりません（ノートと一緒に選んでください）` : ''));
 }
 
 $('btn-pick-folder').onclick = async () => {
@@ -839,6 +1136,7 @@ $('btn-sync').onclick = async () => {
     const { doc, name, pulled } = await vault.syncToFolder(h, state.doc);
     if (pulled) {
       openDoc(normalizeDoc(doc), { fit: false });
+      ensureBlobUrls();
     } else {
       state.doc = doc;
       await saveNow();
@@ -882,12 +1180,14 @@ function buildTools() {
   const nav = $('tools');
   nav.innerHTML = TOOLS.map((t) => {
     const label = t.label || KINDS[t.id].label;
-    return `<button type="button" data-tool="${t.id}" aria-pressed="${t.id === state.tool}" title="${label}${t.key ? `（${t.key}）` : ''}">
+    const attr = t.action ? `data-action="${t.id}" class="tool-action"` : `data-tool="${t.id}" aria-pressed="${t.id === state.tool}"`;
+    return `<button type="button" ${attr} title="${t.action ? '下図を敷く（測量図 PDF・写真）' : label}${t.key ? `（${t.key}）` : ''}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ico-${t.id}"/></svg><span>${label}</span></button>`;
   }).join('') + ICONS;
   nav.onclick = (ev) => {
     const b = ev.target.closest('[data-tool]');
     if (b) setTool(b.dataset.tool);
+    if (ev.target.closest('[data-action="underlay"]')) $('ul-input').click();
   };
 }
 
@@ -904,6 +1204,7 @@ const ICONS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
 <symbol id="ico-takasa" viewBox="0 0 24 24"><path d="M5 14h8M9 10v8M15 8h5M17.5 5.5v5"/></symbol>
 <symbol id="ico-sunpo" viewBox="0 0 24 24"><path d="M4 7v10M20 7v10M4 12h16M6 14l-2-2 2-2M18 10l2 2-2 2"/></symbol>
 <symbol id="ico-moji" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></symbol>
+<symbol id="ico-underlay" viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4"/></symbol>
 </defs></svg>`;
 
 $('btn-undo').onclick = undo;
@@ -912,8 +1213,21 @@ $('btn-fit').onclick = fitView;
 $('btn-site').onclick = showSites;
 $('btn-vault').onclick = showVault;
 $('btn-panel').onclick = () => togglePanel();
-$('cmd-done').onclick = finishDraft;
-$('cmd-cancel').onclick = cancelDraft;
+$('cmd-done').onclick = () => (state.ulMode ? exitUlMode() : finishDraft());
+$('cmd-cancel').onclick = () => {
+  if (state.ulMode?.type === 'move') {
+    // 動かし始めてからの分を元に戻す。
+    const n = state.ulMode.undoDepth ?? undoStack.length;
+    while (undoStack.length > n) undo();
+    exitUlMode();
+  } else if (state.ulMode) exitUlMode();
+  else cancelDraft();
+};
+$('ul-input').onchange = async (ev) => {
+  const files = [...ev.target.files];
+  ev.target.value = '';
+  for (const f of files) await addUnderlayFromFile(f);
+};
 $('shape-switch').onclick = (ev) => {
   const b = ev.target.closest('[data-shape]');
   if (!b || !state.draft) return;

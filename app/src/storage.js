@@ -5,10 +5,13 @@ let dbp;
 
 function db() {
   dbp ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore('docs', { keyPath: 'id' });
-      req.result.createObjectStore('kv');
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = (e) => {
+      if (e.oldVersion < 1) {
+        req.result.createObjectStore('docs', { keyPath: 'id' });
+        req.result.createObjectStore('kv');
+      }
+      if (e.oldVersion < 2) req.result.createObjectStore('blobs');
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -32,6 +35,9 @@ export const deleteDoc = (id) => run('docs', 'readwrite', (s) => s.delete(id));
 export const listDocs = () => run('docs', 'readonly', (s) => s.getAll());
 export const getKV = (k) => run('kv', 'readonly', (s) => s.get(k));
 export const setKV = (k, v) => run('kv', 'readwrite', (s) => s.put(v, k));
+// 下図の画像。中身の指紋を鍵にするので、同じ画像は一つで済む。
+export const getBlob = (hash) => run('blobs', 'readonly', (s) => s.get(hash));
+export const putBlob = (hash, blob) => run('blobs', 'readwrite', (s) => s.put(blob, hash));
 
 // iPhone では、ホーム画面に追加したうえでこれを通すと消されにくくなる。
 export async function requestPersist() {

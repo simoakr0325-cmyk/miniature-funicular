@@ -2,7 +2,8 @@
 // 前書き（frontmatter）は Obsidian のプロパティとして読める項目だけ。
 // 図の正本は末尾の ```nawabari ブロックの JSON で、ここだけを読み戻す。
 
-import { normalizeDoc, quantities, formatQty, live } from './model.js';
+import { normalizeDoc, quantities, formatQty, live, liveUnderlays } from './model.js';
+import { blobFileName } from './underlay.js';
 
 const BLOCK_OPEN = '```nawabari';
 const yamlStr = (s) => JSON.stringify(String(s ?? ''));
@@ -39,6 +40,11 @@ export function toNote(doc) {
     for (const r of rows) lines.push(`| ${r.label} | ${formatQty(r)} | ${r.unit} |`);
   } else {
     lines.push('（まだ部材がありません）');
+  }
+  const uls = liveUnderlays(doc);
+  if (uls.length) {
+    lines.push('', '## 下図', '');
+    for (const u of uls) lines.push(`- ${u.name}`, `  ![[${blobFileName(u)}|400]]`);
   }
   lines.push('', '## 図データ', '', BLOCK_OPEN, JSON.stringify(doc), '```', '');
   return lines.join('\n');

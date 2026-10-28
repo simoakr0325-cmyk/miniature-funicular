@@ -298,3 +298,25 @@ polygon.draft { fill: rgba(194, 87, 26, 0.06); }
   .field { grid-template-columns: 5em 1fr; }
   input[type="text"], select { font-size: 16px; } /* iOS が拡大しないように */
 }
+
+/* ---- 下図 ---- */
+.ul { pointer-events: none; }
+image.ul { mix-blend-mode: multiply; }
+.ul-missing { fill: rgba(138, 59, 37, 0.06); stroke: var(--danger); stroke-dasharray: 6 4; }
+.ul-missing-txt { fill: var(--danger); }
+.ul-pick { fill: none; stroke: var(--sel); stroke-width: 1.8; }
+.ul-pick.target { stroke: var(--accent); }
+.ul-pick.dashed { stroke-dasharray: 5 4; stroke-width: 1.2; }
+.lbl.ul-pick-no { fill: var(--sel); font-weight: 700; text-anchor: start; }
+.ul-item { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--rule); border-radius: 8px; }
+.ul-item.active { border-color: var(--sel); }
+.ul-name span { font-weight: 700; overflow-wrap: anywhere; }
+.ul-item .row button { min-height: 32px; padding-inline: 8px; font-size: 0.8125rem; }
+.ul-item input[type="range"] { width: 100%; accent-color: var(--accent); }
+.field > .ratio { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: inherit; min-width: 0; }
+.ratio input { flex: 1; min-width: 0; }
+.warn { color: var(--danger); margin: 0; }
+.tools .tool-action { margin-top: auto; border-top: 1px solid var(--rule); border-radius: 0 0 6px 6px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) image.ul { mix-blend-mode: normal; } }
+:root[data-theme="dark"] image.ul { mix-blend-mode: normal; }
+@media (max-width: 760px) { .tools .tool-action { margin-top: 0; border-top: none; border-left: 1px solid var(--rule); } }
