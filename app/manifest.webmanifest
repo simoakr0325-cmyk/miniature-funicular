@@ -1,0 +1,16 @@
+{
+  "name": "縄張り台",
+  "short_name": "縄張り台",
+  "description": "山波創苑の外構・造園CAD",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f3f0",
+  "theme_color": "#2f5d46",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

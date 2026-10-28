@@ -1,0 +1,10 @@
+{
+  "name": "nawabari-dai",
+  "private": true,
+  "type": "module",
+  "description": "山波創苑の外構・造園CAD「縄張り台」",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test tests/*.test.js"
+  }
+}

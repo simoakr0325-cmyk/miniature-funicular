@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>縄張り台</title>
+<meta name="description" content="山波創苑の外構・造園CAD">
+<meta name="theme-color" content="#2f5d46">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="縄張り台">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <button id="btn-site" class="site" type="button" title="現場を切り替える">
+      <span class="site-id" id="site-id"></span><span class="site-name" id="site-name">無題の現場</span>
+    </button>
+    <span id="save-state" class="save-state" aria-live="polite"></span>
+    <span class="spacer"></span>
+    <button id="btn-undo" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5 3 9l4 4M3 9h9a5 5 0 0 1 0 10h-2"/></svg>
+    </button>
+    <button id="btn-redo" type="button" title="やり直す（Ctrl+Y）" aria-label="やり直す">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m13 5 4 4-4 4m4-4H8a5 5 0 0 0 0 10h2"/></svg>
+    </button>
+    <button id="btn-fit" type="button" title="全体を見る（F）">全体</button>
+    <button id="btn-vault" class="primary" type="button" title="Obsidian と受け渡す">Obsidian<span class="dot" id="unsynced" hidden></span></button>
+    <button id="btn-panel" class="only-narrow" type="button" aria-expanded="false" aria-controls="panel">詳細</button>
+  </header>
+  <nav id="tools" class="tools" aria-label="道具"></nav>
+  <main id="stage" class="stage">
+    <svg id="canvas" class="canvas" role="img" aria-label="図面">
+      <g id="scene"></g>
+      <g id="overlay"></g>
+    </svg>
+    <div id="empty-hint" class="empty-hint" hidden>
+      <p>左の道具から「敷地境界」を選び、角を順に打って囲みます。</p>
+      <p class="sub">最初の点をもう一度押すか Enter で閉じます。長さは数字を打って Enter。</p>
+    </div>
+    <div id="cmd" class="cmd" hidden>
+      <span id="cmd-hint" class="cmd-hint"></span>
+      <div id="shape-switch" class="seg" role="group" aria-label="形" hidden>
+        <button type="button" data-shape="poly" aria-pressed="true">多角形</button>
+        <button type="button" data-shape="rect" aria-pressed="false">四角</button>
+      </div>
+      <label class="len"><span class="vh">長さ（mm）</span>
+        <input id="len" type="text" inputmode="decimal" autocomplete="off" placeholder="長さ mm" enterkeyhint="done">
+      </label>
+      <button id="cmd-done" type="button" class="primary">確定</button>
+      <button id="cmd-cancel" type="button">取消</button>
+    </div>
+  </main>
+  <aside id="panel" class="panel" aria-label="詳細"></aside>
+</div>
+
+<dialog id="dlg-site" class="dlg">
+  <form method="dialog" class="dlg-body">
+    <h2>現場</h2>
+    <ul id="site-list" class="list"></ul>
+    <div class="row">
+      <button id="btn-new-site" type="button" class="primary">新しい現場</button>
+      <button value="close">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-vault" class="dlg">
+  <form method="dialog" class="dlg-body">
+    <h2>Obsidian と受け渡す</h2>
+    <section id="vault-folder" class="vsec" hidden>
+      <p class="muted">vault の中の、縄張りノートを置くフォルダを一度選びます。以後はそのフォルダへ直接書き込みます。</p>
+      <p class="folder-line"><span>フォルダ</span><b id="folder-name">未選択</b>
+        <button id="btn-pick-folder" type="button">選ぶ</button></p>
+      <button id="btn-sync" type="button" class="primary wide">この図を Obsidian と揃える</button>
+      <p class="muted small">同じ図のノートがあれば、部材ごとに新しい方を採って合わせてから書き込みます。</p>
+      <h3>フォルダ内の縄張りノート</h3>
+      <ul id="note-list" class="list"></ul>
+    </section>
+    <section class="vsec" id="vault-files">
+      <p class="muted" id="files-note">ノートのファイルを手で運びます。iPhone では「ファイル」アプリの iCloud Drive › Obsidian › vault の中へ保存し、そこから読み込みます。</p>
+      <div class="row">
+        <button id="btn-export" type="button">ノートを書き出す</button>
+        <label class="btn">ノートを読み込む<input id="file-import" type="file" accept=".md,text/markdown,text/plain" multiple hidden></label>
+      </div>
+    </section>
+    <div class="row end"><button value="close">閉じる</button></div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
