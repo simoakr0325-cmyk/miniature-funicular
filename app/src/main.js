@@ -8,6 +8,9 @@ import {
 import { dist, orthoConstrain, pointAtDistance, rectFromCorners, bbox } from './geometry.js';
 import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from './render.js';
 import * as UL from './underlay.js';
+import * as SH from './sheet.js';
+import { plotSheet } from './plot.js';
+import { pointInPolygon } from './geometry.js';
 import { hitElement, findSnap } from './hit.js';
 import * as store from './storage.js';
 import * as vault from './vault.js';
@@ -44,6 +47,7 @@ const state = {
   snap: null,
   lastTreeR: 750,
   ulMode: null, // 下図の調整中：{ type: 'move' | 'length' | 'align', id, pts }
+  sheetMode: false, // 図面の枠を決めている間
 };
 const blobUrls = new Map();
 let view = { cx: 0, cy: 0, scale: 0.1 };
@@ -65,8 +69,8 @@ function render() {
     const v = currentView();
     syncUnderlays(ulG, liveUnderlays(state.doc), v, blobUrls, state.ulMode?.id);
     sceneG.innerHTML = renderScene(state, v);
-    overlayG.innerHTML = renderOverlay(state, v) + ulOverlay(v);
-    $('empty-hint').hidden = live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0 || !!state.draft || !!state.ulMode;
+    overlayG.innerHTML = sheetOverlay(v) + renderOverlay(state, v) + ulOverlay(v);
+    $('empty-hint').hidden = live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0 || !!state.draft || !!state.ulMode || state.sheetMode;
     $('btn-undo').disabled = !undoStack.length;
     $('btn-redo').disabled = !redoStack.length;
   });
@@ -74,7 +78,19 @@ function render() {
 
 function renderOverlayOnly() {
   const v = currentView();
-  overlayG.innerHTML = renderOverlay(state, v) + ulOverlay(v);
+  overlayG.innerHTML = sheetOverlay(v) + renderOverlay(state, v) + ulOverlay(v);
+}
+
+// 図面の枠。枠の外を薄く覆い、表題欄の所を示す。
+function sheetOverlay(v) {
+  if (!state.sheetMode) return '';
+  const { frame, title } = SH.worldRects(SH.sheetOf(state.doc));
+  const pts = (ps) => ps.map((p) => v.toS(p).map((n) => Math.round(n * 10) / 10).join(',')).join(' ');
+  const f = frame.map((p) => v.toS(p));
+  const mask = `M-99999 -99999H99999V99999H-99999Z M${f.map((p) => p.join(' ')).join('L')}Z`;
+  return `<path class="sheet-mask" fill-rule="evenodd" d="${mask}"/>
+    <polygon class="sheet-frame" points="${pts(frame)}"/>
+    <polygon class="sheet-title" points="${pts(title)}"/>`;
 }
 
 // 下図を合わせるときに押した点。下図の上の点は〇、図の上の点は□。
@@ -221,6 +237,7 @@ function geomOf(kind) {
 
 function setTool(id) {
   exitUlMode();
+  exitSheetMode();
   state.draft = null;
   cancelDraft();
   state.tool = id;
@@ -239,6 +256,7 @@ function cancelDraft() {
 }
 
 function updateCmd() {
+  if (state.sheetMode) return updateSheetCmd();
   if (state.ulMode) return updateUlCmd();
   $('cmd-done').textContent = '確定';
   $('cmd-cancel').textContent = '取消';
@@ -370,6 +388,14 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
   if (e.button !== 0) return;
+  if (state.sheetMode) {
+    const { frame } = SH.worldRects(SH.sheetOf(state.doc));
+    const sh = SH.sheetOf(state.doc);
+    gesture = pointInPolygon(v.toW(sp), frame)
+      ? { type: 'sheetmove', start: sp, orig: [sh.cx, sh.cy], moved: false }
+      : { type: 'pan', start: sp, view0: { ...view } };
+    return;
+  }
   if (state.ulMode) {
     const ul = ulById(state.ulMode.id);
     gesture = state.ulMode.type === 'move' && ul
@@ -422,6 +448,16 @@ svg.addEventListener('pointermove', (e) => {
     view.cy = gesture.view0.cy - (sp[1] - gesture.start[1]) / view.scale;
     if (dist(sp, gesture.start) > 4) gesture.clickClears = false;
     render();
+    return;
+  }
+  if (gesture?.type === 'sheetmove') {
+    gesture.moved = true;
+    const g = state.doc.settings.gridOn ? state.doc.settings.grid : 1;
+    const snap = (val) => Math.round(val / g) * g;
+    setSheet({
+      cx: snap(gesture.orig[0] + (sp[0] - gesture.start[0]) / view.scale),
+      cy: snap(gesture.orig[1] + (sp[1] - gesture.start[1]) / view.scale),
+    }, { save: false });
     return;
   }
   if (gesture?.type === 'ulmove') {
@@ -490,6 +526,7 @@ function endPointer(e) {
     return;
   }
   if (g.type === 'pan' && g.clickClears && state.selection) select(null);
+  if (g.type === 'sheetmove' && g.moved) setSheet({});
   if (g.type === 'ulmove' && g.moved) {
     touch(ulById(g.orig.id));
     pushHistory(g.before);
@@ -585,7 +622,8 @@ document.addEventListener('keydown', (e) => {
   if (mod) return;
   switch (e.key) {
     case 'Escape':
-      if (state.ulMode) exitUlMode();
+      if (state.sheetMode) exitSheetMode();
+      else if (state.ulMode) exitUlMode();
       else if (state.draft?.pts.length) cancelDraft();
       else if (state.tool !== 'select') setTool('select');
       else select(null);
@@ -633,6 +671,7 @@ function field(name, value, { numeric, choices, unit } = {}) {
 
 function renderPanel() {
   const p = $('panel');
+  if (state.sheetMode) return renderSheetPanel(p);
   const el = byId(state.selection);
   if (el) {
     const def = KINDS[el.kind];
@@ -1165,6 +1204,180 @@ $('file-import').onchange = async (ev) => {
   $('dlg-vault').close();
 };
 
+// ---------- 図面（印刷・PDF） ----------
+
+function contentBox() {
+  const pts = live(state.doc).flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
+  if (!pts.length) for (const u of liveUnderlays(state.doc)) if (u.visible) pts.push(...UL.corners(u));
+  return pts.length ? bbox(pts) : null;
+}
+
+function setSheet(patch, { save = true, panel = false } = {}) {
+  state.doc.settings.sheet = { ...SH.sheetOf(state.doc), ...patch };
+  if (save) changed({ panel });
+  else render();
+}
+
+function startSheetMode() {
+  setTool('select');
+  select(null);
+  if (!state.doc.settings.sheet) {
+    const box = contentBox();
+    state.doc.settings.sheet = box ? SH.fitToBox(SH.defaultSheet(), box) : { ...SH.defaultSheet(), cx: view.cx, cy: view.cy };
+  }
+  state.sheetMode = true;
+  $('btn-sheet').setAttribute('aria-pressed', 'true');
+  if (matchMedia('(max-width: 760px)').matches) togglePanel(false);
+  fitSheet();
+  updateCmd();
+  renderPanel();
+}
+
+function exitSheetMode() {
+  if (!state.sheetMode) return;
+  state.sheetMode = false;
+  $('btn-sheet').setAttribute('aria-pressed', 'false');
+  updateCmd();
+  renderPanel();
+  render();
+}
+
+// 画面に用紙全体が収まるように寄る。
+function fitSheet() {
+  const { frame } = SH.worldRects(SH.sheetOf(state.doc));
+  const b = bbox(frame);
+  const r = svg.getBoundingClientRect();
+  view = { cx: (b.x0 + b.x1) / 2, cy: (b.y0 + b.y1) / 2, scale: Math.min((r.width - 60) / (b.x1 - b.x0), (r.height - 140) / (b.y1 - b.y0)) };
+  render();
+}
+
+function updateSheetCmd() {
+  $('cmd').hidden = false;
+  $('cmd-hint').textContent = '図面：枠を引いて、紙に入れる範囲を決める';
+  $('shape-switch').hidden = true;
+  $('len').closest('label').hidden = true;
+  $('cmd-done').hidden = false;
+  $('cmd-done').disabled = false;
+  $('cmd-done').textContent = 'PDF を書き出す';
+  $('cmd-cancel').hidden = false;
+  $('cmd-cancel').textContent = '終わる';
+}
+
+function renderSheetPanel(p) {
+  const sh = SH.sheetOf(state.doc);
+  const opt = (list, cur, fmt = (x) => x) => list.map((x) => `<option value="${x}"${String(x) === String(cur) ? ' selected' : ''}>${fmt(x)}</option>`).join('');
+  const hasFolder = vault.canUseFolder();
+  p.innerHTML = `
+    <section class="psec">
+      <h2>図面</h2>
+      <form id="sheet-form" class="fields" onsubmit="return false">
+        <label class="field"><span>用紙</span><select data-k="paper">${opt(Object.keys(SH.PAPERS), sh.paper)}</select></label>
+        <label class="field"><span>向き</span><select data-k="orient">${opt(['landscape', 'portrait'], sh.orient, (x) => (x === 'landscape' ? '横' : '縦'))}</select></label>
+        <label class="field"><span>縮尺</span><select data-k="scale">${opt(SH.SCALES, sh.scale, (x) => '1/' + x)}</select></label>
+        ${field('図名', sh.title).replace('data-prop="図名"', 'data-k="title"')}
+        ${field('図番', sh.number).replace('data-prop="図番"', 'data-k="number"')}
+        ${field('会社名', sh.company).replace('data-prop="会社名"', 'data-k="company"')}
+        ${field('北の向き', sh.north, { numeric: true, unit: '°' }).replace('data-prop="北の向き"', 'data-k="north"')}
+        <label class="check"><input type="checkbox" data-k="underlays" ${sh.underlays ? 'checked' : ''}> 下図も印刷する</label>
+      </form>
+      <div class="row"><button type="button" id="sh-fit">全体が入るように</button></div>
+      <p class="muted small">北の向きは、図の上を 0° として時計回りの角度です。</p>
+    </section>
+    <section class="psec">
+      <h2>書き出す</h2>
+      <button type="button" id="sh-pdf" class="primary wide">PDF を書き出す</button>
+      ${hasFolder ? '<button type="button" id="sh-open" class="wide">開いて印刷する</button><button type="button" id="sh-folder" class="wide">Obsidian のフォルダに置く</button>' : ''}
+      <p class="muted small">印刷するときは倍率を「実際のサイズ（100%）」にしてください。「用紙に合わせる」にすると縮尺がずれます。iPhone では共有シートから「プリント」か「ファイルに保存」を選べます。</p>
+      <button type="button" id="sh-close" class="wide">終わる</button>
+    </section>`;
+  p.querySelector('#sheet-form').addEventListener('change', (ev) => {
+    const t = ev.target;
+    const k = t.dataset.k;
+    if (!k) return;
+    let v = t.type === 'checkbox' ? t.checked : t.value;
+    if (k === 'scale') v = Number(v);
+    if (k === 'north') {
+      v = Number(String(v).replace(/[０-９．－]/g, (c) => (c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))));
+      if (!Number.isFinite(v)) return toast('北の向きは数で入れてください');
+    }
+    setSheet({ [k]: v });
+    if (k === 'paper' || k === 'orient' || k === 'scale') fitSheet();
+  });
+  $('sh-fit').onclick = () => {
+    const box = contentBox();
+    if (!box) return toast('まだ部材がありません');
+    setSheet(SH.fitToBox(SH.sheetOf(state.doc), box), { panel: true });
+    fitSheet();
+  };
+  $('sh-pdf').onclick = () => exportPdf('share');
+  if (hasFolder) {
+    $('sh-open').onclick = () => exportPdf('open');
+    $('sh-folder').onclick = () => exportPdf('folder');
+  }
+  $('sh-close').onclick = exitSheetMode;
+}
+
+// 下図の画像を PDF に入れられる JPEG にする。
+async function jpegOf(blob) {
+  const bmp = await createImageBitmap(blob);
+  const { width: w, height: h } = bmp;
+  if (blob.type === 'image/jpeg') {
+    bmp.close?.();
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), w, h };
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close?.();
+  const jpg = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+  return { bytes: new Uint8Array(await jpg.arrayBuffer()), w, h };
+}
+
+async function makePdfFile() {
+  const sh = SH.sheetOf(state.doc);
+  const images = new Map();
+  if (sh.underlays) {
+    for (const u of liveUnderlays(state.doc)) {
+      if (!u.visible || images.has(u.blob)) continue;
+      const blob = await store.getBlob(u.blob).catch(() => null);
+      if (blob) images.set(u.blob, await jpegOf(blob));
+    }
+  }
+  const bytes = plotSheet(state.doc, sh, { images });
+  return new File([bytes], SH.pdfFileName(state.doc, sh), { type: 'application/pdf' });
+}
+
+async function exportPdf(how) {
+  // 新しいタブは押した直後に開かないと止められるので、先に開いておく。
+  const win = how === 'open' ? window.open('', '_blank') : null;
+  try {
+    toast('PDF を作っています…');
+    const file = await makePdfFile();
+    if (how === 'open') {
+      const url = URL.createObjectURL(file);
+      if (win) win.location.href = url;
+      else window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast('PDF を開きました。倍率「実際のサイズ」で印刷してください');
+    } else if (how === 'folder') {
+      const h = await vault.getFolder();
+      if (!h) return toast('先に「Obsidian」で vault のフォルダを選んでください');
+      await vault.writeToFolder(h, file);
+      toast(`${file.name} を Obsidian のフォルダに置きました`);
+    } else {
+      const r = await vault.shareOrDownload([file], file.name);
+      if (r !== 'cancelled') toast(r === 'shared' ? 'PDF を渡しました' : `${file.name} を書き出しました`);
+    }
+  } catch (err) {
+    win?.close();
+    toast('PDF を作れませんでした：' + err.message);
+  }
+}
+
 // ---------- そのほか ----------
 
 let toastTimer = 0;
@@ -1213,8 +1426,10 @@ $('btn-fit').onclick = fitView;
 $('btn-site').onclick = showSites;
 $('btn-vault').onclick = showVault;
 $('btn-panel').onclick = () => togglePanel();
-$('cmd-done').onclick = () => (state.ulMode ? exitUlMode() : finishDraft());
+$('cmd-done').onclick = () => (state.sheetMode ? exportPdf('share') : state.ulMode ? exitUlMode() : finishDraft());
+$('btn-sheet').onclick = () => (state.sheetMode ? exitSheetMode() : startSheetMode());
 $('cmd-cancel').onclick = () => {
+  if (state.sheetMode) return exitSheetMode();
   if (state.ulMode?.type === 'move') {
     // 動かし始めてからの分を元に戻す。
     const n = state.ulMode.undoDepth ?? undoStack.length;

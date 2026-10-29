@@ -320,3 +320,9 @@ image.ul { mix-blend-mode: multiply; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) image.ul { mix-blend-mode: normal; } }
 :root[data-theme="dark"] image.ul { mix-blend-mode: normal; }
 @media (max-width: 760px) { .tools .tool-action { margin-top: 0; border-top: none; border-left: 1px solid var(--rule); } }
+
+/* ---- 図面 ---- */
+.bar button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+.sheet-mask { fill: var(--muted); opacity: 0.22; pointer-events: none; }
+.sheet-frame { fill: none; stroke: var(--accent); stroke-width: 2; cursor: move; }
+.sheet-title { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; opacity: 0.85; }

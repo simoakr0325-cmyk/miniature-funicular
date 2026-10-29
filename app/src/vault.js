@@ -123,9 +123,14 @@ export async function exportNote(doc) {
     const blob = await getBlob(u.blob);
     if (blob) files.push(new File([blob], blobFileName(u), { type: u.mime }));
   }
+  return shareOrDownload(files, name);
+}
+
+// 共有シート（iPhone では「ファイルに保存」「プリント」も選べる）か、ダウンロードで渡す。
+export async function shareOrDownload(files, title) {
   if (navigator.canShare?.({ files })) {
     try {
-      await navigator.share({ files, title: name });
+      await navigator.share({ files, title });
       return 'shared';
     } catch (err) {
       if (err.name === 'AbortError') return 'cancelled';
@@ -140,4 +145,12 @@ export async function exportNote(doc) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return 'downloaded';
+}
+
+// フォルダ（vault の中）へ一つのファイルを書き込む。
+export async function writeToFolder(handle, file) {
+  if (!(await ensurePermission(handle))) throw new Error('フォルダを使う許可がありません');
+  const w = await (await handle.getFileHandle(file.name, { create: true })).createWritable();
+  await w.write(file);
+  await w.close();
 }
