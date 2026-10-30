@@ -335,3 +335,15 @@ image.ul { mix-blend-mode: multiply; }
 .vsel-box { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--sel); border-radius: 6px; }
 .row.tight button { padding-inline: 8px; }
 #p-bend[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+
+/* ---- 座標 ---- */
+#coord-text { width: 100%; padding: 8px; font: 0.875rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; resize: vertical; }
+.coord-preview { display: grid; gap: 6px; font-size: 0.875rem; }
+.coord-preview p { margin: 0; }
+.coord-readout {
+  position: absolute; right: 12px; top: 12px; padding: 4px 10px; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--rule); font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.coords th:first-child { width: 2em; color: var(--muted); }
+.coords thead th { font-size: 0.75rem; color: var(--muted); text-align: right; }

@@ -11,6 +11,7 @@ import * as UL from './underlay.js';
 import * as SH from './sheet.js';
 import { plotSheet } from './plot.js';
 import { buildDxf, dxfFileName } from './dxf.js';
+import * as SV from './survey.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -26,7 +27,8 @@ const TOOLS = [
   { id: 'select', label: '選ぶ', key: 'V' },
   { id: 'shikichi' }, { id: 'tatemono' }, { id: 'hoso' }, { id: 'shokusaitai' }, { id: 'jumoku' },
   { id: 'keiseki' }, { id: 'hei' }, { id: 'enseki' }, { id: 'takasa' }, { id: 'sunpo' }, { id: 'moji' },
-  { id: 'underlay', label: '下図', action: true },
+  { id: 'coord', label: '座標', action: true, title: '座標で入力（平面直角座標）' },
+  { id: 'underlay', label: '下図', action: true, title: '下図を敷く（測量図 PDF・写真）' },
 ];
 
 const HINTS = {
@@ -575,10 +577,12 @@ svg.addEventListener('pointermove', (e) => {
     render();
     return;
   }
+  updateReadout(e.pointerType === 'touch' ? null : v.toW(sp));
   if (state.draft && !gesture && e.pointerType !== 'touch') {
     const s = snapAt(sp, e);
     state.draft.cursor = s.p;
     state.snap = s.type === 'free' ? null : s;
+    updateReadout(v.toW(sp));
     renderOverlayOnly();
   }
 });
@@ -814,7 +818,8 @@ function renderPanel() {
           <button type="button" id="p-del" class="danger">削除</button>
           <button type="button" id="p-close">選択を外す</button>
         </div>
-      </section>`;
+      </section>
+      ${coordTable(el)}`;
     p.querySelector('#props').addEventListener('change', (ev) => {
       const t = ev.target;
       const name = t.dataset.prop;
@@ -838,6 +843,7 @@ function renderPanel() {
     if ($('p-bend')) $('p-bend').onclick = () => { state.bend = !state.bend; renderPanel(); renderOverlayOnly(); };
     if ($('p-straight')) $('p-straight').onclick = () => commit(() => { const x = { ...el }; delete x.b; replaceEl(x); });
     bindTransformTools(p);
+    if ($('p-copy-coords')) $('p-copy-coords').onclick = () => copyCoords(el);
     return;
   }
   const d = state.doc;
@@ -1382,6 +1388,101 @@ function renderMultiPanel(p, els) {
   bindTransformTools(p);
 }
 
+// ---------- 平面直角座標 ----------
+
+function updateReadout(w) {
+  const geo = state.doc.settings.geo;
+  const el = $('coord-readout');
+  if (!geo || !w) {
+    el.hidden = true;
+    return;
+  }
+  const p = state.snap?.p || w;
+  const { X, Y } = SV.toSurvey(geo, p);
+  el.hidden = false;
+  el.textContent = `X ${SV.fmtCoord(X)}　Y ${SV.fmtCoord(Y)}${geo.zone ? `　第${SV.ZONES[geo.zone - 1]}系` : ''}`;
+}
+
+function coordTable(el) {
+  const geo = state.doc.settings.geo;
+  if (!geo || !el.pts.length) return '';
+  const rows = el.pts.map((p, i) => {
+    const { X, Y } = SV.toSurvey(geo, p);
+    return `<tr><th>${i + 1}</th><td>${SV.fmtCoord(X)}</td><td>${SV.fmtCoord(Y)}</td></tr>`;
+  });
+  return `<section class="psec">
+    <h2>座標<small>m${geo.zone ? `・第${SV.ZONES[geo.zone - 1]}系` : ''}</small></h2>
+    <table class="qty coords"><thead><tr><th></th><th>X（北）</th><th>Y（東）</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+    <button type="button" id="p-copy-coords">座標をコピー</button>
+  </section>`;
+}
+
+async function copyCoords(el) {
+  const geo = state.doc.settings.geo;
+  const text = el.pts.map((p, i) => {
+    const { X, Y } = SV.toSurvey(geo, p);
+    return `${i + 1}\t${SV.fmtCoord(X)}\t${SV.fmtCoord(Y)}`;
+  }).join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('座標をコピーしました（番号・X・Y、タブ区切り）');
+  } catch {
+    toast('コピーできませんでした');
+  }
+}
+
+function showCoordDialog() {
+  const geo = state.doc.settings.geo;
+  $('coord-zone').innerHTML = `<option value="">未設定</option>` + SV.ZONES.map((z, i) => `<option value="${i + 1}"${geo?.zone === i + 1 ? ' selected' : ''}>第${z}系</option>`).join('');
+  updateCoordPreview();
+  $('dlg-coord').showModal();
+  $('coord-text').focus();
+}
+
+function updateCoordPreview() {
+  const { points, skipped } = SV.parseCoordText($('coord-text').value);
+  const kind = $('coord-kind').value;
+  const out = [];
+  if (points.length) {
+    out.push(`<p><b>${points.length} 点</b>${skipped.length ? `（${skipped.length} 行は数が読めないので飛ばします）` : ''}</p>`);
+    if (kind === 'shikichi' && points.length >= 3) {
+      const a = SV.coordArea(points);
+      out.push(`<p>座標求積 <b>${a.toFixed(2)} m²</b>（${a.toFixed(6)}）　周長 ${SV.edgeLengths(points).reduce((s, e) => s + e.length, 0).toFixed(3)} m</p>`);
+    }
+    const edges = kind === 'none' ? [] : SV.edgeLengths(points, kind === 'shikichi');
+    if (edges.length) out.push(`<table class="qty"><tbody>${edges.map((e) => `<tr><th>${escapeHtml(e.from)} → ${escapeHtml(e.to)}</th><td>${e.length.toFixed(3)}</td><td>m</td></tr>`).join('')}</tbody></table>`);
+    if (!state.doc.settings.geo) out.push('<p class="muted small">最初の点の近くを図の原点にします。以後この図は、この座標で読み書きします。</p>');
+  } else if ($('coord-text').value.trim()) out.push('<p class="warn">座標が読めません。一行に「点名 X Y」の形で入れてください。</p>');
+  $('coord-preview').innerHTML = out.join('');
+  const need = kind === 'shikichi' ? 3 : kind === 'enseki' ? 2 : 1;
+  $('coord-ok').disabled = points.length < need;
+}
+
+function createFromCoords() {
+  const { points } = SV.parseCoordText($('coord-text').value);
+  const kind = $('coord-kind').value;
+  const zone = Number($('coord-zone').value) || null;
+  const geo = state.doc.settings.geo || { origin: SV.originFor(points) };
+  state.doc.settings.geo = { ...geo, zone: zone ?? geo.zone ?? null };
+  const pts = points.map((p) => SV.toWorld(state.doc.settings.geo, p.X, p.Y));
+  const made = [];
+  if (kind === 'shikichi') made.push(createElement('shikichi', pts));
+  if (kind === 'enseki') made.push(createElement('enseki', pts));
+  if ($('coord-names').checked || kind === 'none') {
+    pts.forEach((p, i) => made.push(createElement('moji', [[p[0] + 150, p[1] - 150]], { props: { 文字: points[i].name } })));
+  }
+  setTool('select');
+  commit(() => state.doc.elements.push(...made));
+  select(made[0].id);
+  fitView();
+  $('dlg-coord').close();
+  toast(`${points.length} 点から作りました`);
+}
+
+$('coord-text').addEventListener('input', updateCoordPreview);
+$('coord-kind').addEventListener('change', updateCoordPreview);
+$('coord-ok').onclick = createFromCoords;
+
 // ---------- 図面（印刷・PDF） ----------
 
 function contentBox() {
@@ -1466,6 +1567,7 @@ function renderSheetPanel(p) {
       <button type="button" id="sh-pdf" class="primary wide">PDF を書き出す</button>
       ${hasFolder ? '<button type="button" id="sh-open" class="wide">開いて印刷する</button><button type="button" id="sh-folder" class="wide">Obsidian のフォルダに置く</button>' : ''}
       <p class="muted small">印刷するときは倍率を「実際のサイズ（100%）」にしてください。「用紙に合わせる」にすると縮尺がずれます。iPhone では共有シートから「プリント」か「ファイルに保存」を選べます。</p>
+      ${state.doc.settings.geo ? `<label class="check"><input type="checkbox" id="sh-dxf-survey" ${sh.dxfSurvey !== false ? 'checked' : ''}> DXF を測量座標で書き出す（東が x・北が y、mm）</label>` : ''}
       <button type="button" id="sh-dxf" class="wide">DXF を書き出す</button>
       ${hasFolder ? '<button type="button" id="sh-dxf-folder" class="wide">DXF を Obsidian のフォルダに置く</button>' : ''}
       <p class="muted small">DXF は AutoCAD R12 形式・Shift_JIS・mm 単位です（Jw_cad・AutoCAD・Vectorworks 向け）。部材の種類ごとに画層を分け、文字は図面の縮尺で 2.5mm の高さにします。</p>
@@ -1492,6 +1594,7 @@ function renderSheetPanel(p) {
   };
   $('sh-pdf').onclick = () => exportPdf('share');
   $('sh-dxf').onclick = () => exportDxf('share');
+  if ($('sh-dxf-survey')) $('sh-dxf-survey').onchange = (ev) => setSheet({ dxfSurvey: ev.target.checked });
   if ($('sh-dxf-folder')) $('sh-dxf-folder').onclick = () => exportDxf('folder');
   if (hasFolder) {
     $('sh-open').onclick = () => exportPdf('open');
@@ -1563,7 +1666,9 @@ async function exportPdf(how) {
 
 function makeDxfFile() {
   const sh = SH.sheetOf(state.doc);
-  const bytes = buildDxf(state.doc, { textHeight: 2.5 * sh.scale });
+  const geo = state.doc.settings.geo;
+  const offset = geo && sh.dxfSurvey !== false ? SV.dxfOffset(geo) : [0, 0];
+  const bytes = buildDxf(state.doc, { textHeight: 2.5 * sh.scale, offset });
   return new File([bytes], dxfFileName(state.doc), { type: 'application/dxf' });
 }
 
@@ -1600,13 +1705,14 @@ function buildTools() {
   nav.innerHTML = TOOLS.map((t) => {
     const label = t.label || KINDS[t.id].label;
     const attr = t.action ? `data-action="${t.id}" class="tool-action"` : `data-tool="${t.id}" aria-pressed="${t.id === state.tool}"`;
-    return `<button type="button" ${attr} title="${t.action ? '下図を敷く（測量図 PDF・写真）' : label}${t.key ? `（${t.key}）` : ''}">
+    return `<button type="button" ${attr} title="${t.title || label}${t.key ? `（${t.key}）` : ''}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ico-${t.id}"/></svg><span>${label}</span></button>`;
   }).join('') + ICONS;
   nav.onclick = (ev) => {
     const b = ev.target.closest('[data-tool]');
     if (b) setTool(b.dataset.tool);
     if (ev.target.closest('[data-action="underlay"]')) $('ul-input').click();
+    if (ev.target.closest('[data-action="coord"]')) showCoordDialog();
   };
 }
 
@@ -1623,6 +1729,7 @@ const ICONS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
 <symbol id="ico-takasa" viewBox="0 0 24 24"><path d="M5 14h8M9 10v8M15 8h5M17.5 5.5v5"/></symbol>
 <symbol id="ico-sunpo" viewBox="0 0 24 24"><path d="M4 7v10M20 7v10M4 12h16M6 14l-2-2 2-2M18 10l2 2-2 2"/></symbol>
 <symbol id="ico-moji" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></symbol>
+<symbol id="ico-coord" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16M8 16l4-7 6 3"/><circle cx="8" cy="16" r="1.4"/><circle cx="12" cy="9" r="1.4"/><circle cx="18" cy="12" r="1.4"/></symbol>
 <symbol id="ico-underlay" viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4"/></symbol>
 </defs></svg>`;
 

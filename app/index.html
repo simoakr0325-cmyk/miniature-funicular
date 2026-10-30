@@ -44,6 +44,7 @@
       <p>左の道具から「敷地境界」を選び、角を順に打って囲みます。</p>
       <p class="sub">最初の点をもう一度押すか Enter で閉じます。長さは数字を打って Enter。測量図や写真をなぞるときは「下図」から敷きます。</p>
     </div>
+    <div id="coord-readout" class="coord-readout" hidden></div>
     <div id="cmd" class="cmd" hidden>
       <span id="cmd-hint" class="cmd-hint"></span>
       <div id="shape-switch" class="seg" role="group" aria-label="形" hidden>
@@ -91,6 +92,25 @@
       </div>
     </section>
     <div class="row end"><button value="close">閉じる</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-coord" class="dlg">
+  <form method="dialog" class="dlg-body">
+    <h2>座標で入力（平面直角座標）</h2>
+    <p class="muted small">地積測量図の座標一覧を貼り付けます。一行に「点名 X Y」（単位 m、X は北・Y は東）。見出しの行は飛ばします。</p>
+    <textarea id="coord-text" rows="8" spellcheck="false" placeholder="K1  -45123.456  12345.678&#10;K2  -45123.456  12357.678"></textarea>
+    <div class="fields">
+      <label class="field"><span>作るもの</span><select id="coord-kind">
+        <option value="shikichi">敷地境界（順に囲む）</option>
+        <option value="enseki">線（順につなぐ）</option>
+        <option value="none">点名だけ</option>
+      </select></label>
+      <label class="field"><span>座標系</span><select id="coord-zone"></select></label>
+      <label class="check"><input type="checkbox" id="coord-names" checked> 点名を文字で置く</label>
+    </div>
+    <div id="coord-preview" class="coord-preview" aria-live="polite"></div>
+    <div class="row end"><button value="cancel">やめる</button><button id="coord-ok" type="button" class="primary" disabled>作る</button></div>
   </form>
 </dialog>
 
