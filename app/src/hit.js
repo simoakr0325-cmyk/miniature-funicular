@@ -1,7 +1,7 @@
 // 画面上の一点がどの部材に当たるか。tol は px。
 
 import { KINDS } from './model.js';
-import { dist, distToPolyline, pointInPolygon } from './geometry.js';
+import { dist, distToPolyline, pointInPolygon, densify } from './geometry.js';
 
 export function hitElement(els, v, sp, tol = 8) {
   const w = v.toW(sp);
@@ -12,10 +12,11 @@ export function hitElement(els, v, sp, tol = 8) {
     const el = els[i];
     const g = KINDS[el.kind].geom;
     if (g === 'polygon') {
-      if (el.pts.length >= 2 && distToPolyline(w, el.pts, true) <= tw) return el;
-      if (!insideHit && el.pts.length >= 3 && pointInPolygon(w, el.pts)) insideHit = el;
+      const pts = densify(el.pts, el.b, true);
+      if (pts.length >= 2 && distToPolyline(w, pts, true) <= tw) return el;
+      if (!insideHit && pts.length >= 3 && pointInPolygon(w, pts)) insideHit = el;
     } else if (g === 'polyline') {
-      if (distToPolyline(w, el.pts) <= tw * 1.2) return el;
+      if (distToPolyline(w, densify(el.pts, el.b, false), false) <= tw * 1.2) return el;
     } else if (g === 'circle') {
       const d = dist(w, el.pts[0]);
       if (d <= el.r + tw) return el;
@@ -50,4 +51,25 @@ export function findSnap(els, v, sp, { grid, gridOn, extra = [], exclude = null 
   if (best) return best;
   if (gridOn) return { p: [Math.round(w[0] / grid) * grid, Math.round(w[1] / grid) * grid], type: 'grid' };
   return { p: w, type: 'free' };
+}
+
+// 範囲で選ぶ。window（左から右へ引いた）は全部が中に入るもの、crossing（右から左）は掛かるもの。
+export function elementsInBox(els, x0, y0, x1, y1, crossing) {
+  const inside = ([x, y]) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  return els.filter((el) => {
+    const g = KINDS[el.kind].geom;
+    let pts = g === 'polygon' || g === 'polyline' ? densify(el.pts, el.b, g === 'polygon') : el.pts;
+    if (g === 'circle') {
+      const [cx, cy] = el.pts[0];
+      pts = [[cx - el.r, cy - el.r], [cx + el.r, cy - el.r], [cx + el.r, cy + el.r], [cx - el.r, cy + el.r]];
+    }
+    if (!pts.length) return false;
+    if (!crossing) return pts.every(inside);
+    if (pts.some(inside)) return true;
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const [x, y] of pts) {
+      bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y);
+    }
+    return bx0 <= x1 && bx1 >= x0 && by0 <= y1 && by1 >= y0;
+  });
 }

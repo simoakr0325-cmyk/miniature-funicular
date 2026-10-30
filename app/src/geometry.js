@@ -100,3 +100,110 @@ export function pointAtDistance(from, toward, len) {
 export const angleDeg = (a, b) => (-Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
 
 export const rectFromCorners = (a, b) => [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
+
+// ---------- 円弧の辺 ----------
+// 辺 a→b のふくらみ bulge（DXF と同じ考え方）：b = tan(弧の中心角 / 4)。
+// 0 は直線。正なら a→b の左手（(-dy, dx) の向き）へふくらむ。
+
+export function arcOf(a, b, bulge) {
+  const c = dist(a, b);
+  const theta = 4 * Math.atan(Math.abs(bulge));
+  const r = c / (2 * Math.sin(theta / 2));
+  const nx = -(b[1] - a[1]) / c, ny = (b[0] - a[0]) / c;
+  const s = (bulge * c) / 2; // 弦の中点から弧の中点までの、左手向きの距離
+  const mid = [(a[0] + b[0]) / 2 + nx * s, (a[1] + b[1]) / 2 + ny * s];
+  return { c, r, theta, mid, length: r * theta, segArea: (r * r * (theta - Math.sin(theta))) / 2 };
+}
+
+// 弧の上の点を n 等分で返す（a は含まず b を含む）。
+export function arcPoints(a, b, bulge, n = 16) {
+  if (!bulge) return [b];
+  const { c, r, theta, mid } = arcOf(a, b, bulge);
+  const nx = -(b[1] - a[1]) / c, ny = (b[0] - a[0]) / c;
+  const sag = (bulge * c) / 2;
+  // 中心は弧の中点から、弦の側へ r 戻った所。
+  const toC = sag - Math.sign(bulge) * r;
+  const ctr = [(a[0] + b[0]) / 2 + nx * toC, (a[1] + b[1]) / 2 + ny * toC];
+  const a0 = Math.atan2(a[1] - ctr[1], a[0] - ctr[0]);
+  const am = Math.atan2(mid[1] - ctr[1], mid[0] - ctr[0]);
+  // 弧の中点（中心角の半分）を通る向きに回る。
+  let d = am - a0;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  const dir = Math.sign(d) || 1;
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const t = a0 + (dir * theta * i) / n;
+    out.push([ctr[0] + Math.cos(t) * r, ctr[1] + Math.sin(t) * r]);
+  }
+  out[out.length - 1] = [b[0], b[1]];
+  return out;
+}
+
+export const segCount = (pts, closed) => (closed ? pts.length : Math.max(pts.length - 1, 0));
+export const bulgeAt = (bulges, i) => (bulges && bulges[i]) || 0;
+
+// 円弧を細かな折れ線にした点列（当たり判定・塗り・印刷用）。
+export function densify(pts, bulges, closed = false, n = 16) {
+  if (!bulges || !bulges.some((b) => b)) return pts;
+  const out = [pts[0]];
+  const m = segCount(pts, closed);
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const bu = bulgeAt(bulges, i);
+    if (bu) out.push(...arcPoints(a, b, bu, n));
+    else out.push(b);
+  }
+  if (closed) out.pop(); // 最後は最初の点に戻るので除く
+  return out;
+}
+
+// 円弧の辺を含む面積（向きによらず正）。
+export function areaWithArcs(pts, bulges) {
+  let s = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  let a = s / 2;
+  for (let i = 0; i < pts.length; i++) {
+    const bu = bulgeAt(bulges, i);
+    if (bu) a -= Math.sign(bu) * arcOf(pts[i], pts[(i + 1) % pts.length], bu).segArea;
+  }
+  return Math.abs(a);
+}
+
+export function lengthWithArcs(pts, bulges, closed = false) {
+  let len = 0;
+  const m = segCount(pts, closed);
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const bu = bulgeAt(bulges, i);
+    len += bu ? arcOf(a, b, bu).length : dist(a, b);
+  }
+  return len;
+}
+
+// 辺 a→b を、点 p を通る弧にするふくらみ。p が弦に近ければ 0（直線）。
+export function bulgeThrough(a, b, p, straightTol = 0) {
+  const c = dist(a, b);
+  if (c < 1e-9) return 0;
+  const nx = -(b[1] - a[1]) / c, ny = (b[0] - a[0]) / c;
+  const s = (p[0] - (a[0] + b[0]) / 2) * nx + (p[1] - (a[1] + b[1]) / 2) * ny;
+  if (Math.abs(s) <= straightTol) return 0;
+  return Math.max(-3, Math.min(3, (2 * s) / c));
+}
+
+// 点列をまとめて回す・映す。
+export function rotatePts(pts, center, deg) {
+  const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+  return pts.map(([x, y]) => {
+    const dx = x - center[0], dy = y - center[1];
+    return [center[0] + dx * c - dy * s, center[1] + dx * s + dy * c];
+  });
+}
+
+export function mirrorPts(pts, center, axis) {
+  return pts.map(([x, y]) => (axis === 'x' ? [2 * center[0] - x, y] : [x, 2 * center[1] - y]));
+}

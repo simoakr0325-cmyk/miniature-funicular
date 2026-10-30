@@ -326,3 +326,12 @@ image.ul { mix-blend-mode: multiply; }
 .sheet-mask { fill: var(--muted); opacity: 0.22; pointer-events: none; }
 .sheet-frame { fill: none; stroke: var(--accent); stroke-width: 2; cursor: move; }
 .sheet-title { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; opacity: 0.85; }
+
+/* ---- 選択・頂点・曲げ ---- */
+.box { fill: rgba(47, 93, 70, 0.08); stroke: var(--accent); stroke-width: 1; }
+.box.crossing { fill: rgba(194, 87, 26, 0.06); stroke: var(--sel); stroke-dasharray: 5 3; }
+.handle.picked { fill: var(--sel); }
+.handle.mid.bend { fill: var(--surface); stroke: var(--sel); stroke-width: 2; }
+.vsel-box { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--sel); border-radius: 6px; }
+.row.tight button { padding-inline: 8px; }
+#p-bend[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }

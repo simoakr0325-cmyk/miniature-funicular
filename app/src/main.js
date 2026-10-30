@@ -3,15 +3,15 @@
 import {
   KINDS, LAYERS, NUMERIC_PROPS, createDoc, createElement, live, sortedForDraw, applySnapshot,
   mergeDocs, normalizeDoc, measure, quantities, formatQty, now, round, touch, tombstone, newId,
-  createUnderlay, liveUnderlays,
+  createUnderlay, liveUnderlays, moveElement, rotateElement, mirrorElement, removeVertex, insertVertex, setBulge,
 } from './model.js';
 import { dist, orthoConstrain, pointAtDistance, rectFromCorners, bbox } from './geometry.js';
 import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from './render.js';
 import * as UL from './underlay.js';
 import * as SH from './sheet.js';
 import { plotSheet } from './plot.js';
-import { pointInPolygon } from './geometry.js';
-import { hitElement, findSnap } from './hit.js';
+import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
+import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
 import * as vault from './vault.js';
 
@@ -43,7 +43,10 @@ const state = {
   tool: 'select',
   shape: 'poly',
   draft: null,
-  selection: null,
+  sel: [], // 選んでいる部材の id
+  vsel: null, // 選んでいる頂点 { id, i }
+  bend: false, // 辺の丸を引くと、頂点を足さずに辺を曲げる
+  box: null, // 範囲選択の枠（画面の px）
   snap: null,
   lastTreeR: 750,
   ulMode: null, // 下図の調整中：{ type: 'move' | 'length' | 'align', id, pts }
@@ -187,7 +190,7 @@ function undo() {
   exitUlMode();
   redoStack.push(snapshot());
   moveTo(undoStack.pop());
-  if (state.selection && !byId(state.selection)) state.selection = null;
+  pruneSelection();
   changed();
 }
 
@@ -196,7 +199,7 @@ function redo() {
   exitUlMode();
   undoStack.push(snapshot());
   moveTo(redoStack.pop());
-  if (state.selection && !byId(state.selection)) state.selection = null;
+  pruneSelection();
   changed();
 }
 
@@ -205,26 +208,74 @@ function addElement(el) {
   select(el.id);
 }
 
+const selectedEls = () => state.sel.map(byId).filter(Boolean);
+
+function pruneSelection() {
+  state.sel = state.sel.filter((id) => byId(id));
+  if (state.vsel && (!byId(state.vsel.id) || state.vsel.i >= byId(state.vsel.id).pts.length)) state.vsel = null;
+}
+
+// 部材を差し替える（同じ id の新しい中身へ）。
+function replaceEl(next) {
+  const i = state.doc.elements.findIndex((e) => e.id === next.id);
+  state.doc.elements[i] = touch(next);
+  return state.doc.elements[i];
+}
+
 function deleteSelected() {
-  const el = byId(state.selection);
-  if (!el) return;
+  if (state.vsel) return deleteVertex();
+  const els = selectedEls();
+  if (!els.length) return;
   commit(() => {
-    const i = state.doc.elements.indexOf(el);
-    state.doc.elements[i] = tombstone(el);
-    state.selection = null;
+    for (const el of els) state.doc.elements[state.doc.elements.indexOf(el)] = tombstone(el);
+    state.sel = [];
   });
 }
 
-function duplicateSelected() {
-  const el = byId(state.selection);
-  if (!el) return;
-  const off = state.doc.settings.grid * 5;
-  const copy = { ...structuredClone(el), id: newId(), updatedAt: now(), pts: el.pts.map((p) => [p[0] + off, p[1] + off]) };
-  addElement(copy);
+function deleteVertex() {
+  const { id, i } = state.vsel;
+  const el = byId(id);
+  const next = el && removeVertex(el, i);
+  if (!next) return toast('これ以上頂点を減らすと形が保てません');
+  state.vsel = null;
+  commit(() => replaceEl(next));
 }
 
-function select(id) {
-  state.selection = id;
+function duplicateSelected() {
+  const els = selectedEls();
+  if (!els.length) return;
+  const off = state.doc.settings.grid * 5;
+  const copies = els.map((el) => ({ ...moveElement(structuredClone(el), off, off), id: newId(), updatedAt: now() }));
+  commit(() => state.doc.elements.push(...copies));
+  select(copies.map((c) => c.id));
+}
+
+// 選んだ部材の真ん中（回す・映す軸）。
+function selectionCenter(els) {
+  const pts = els.flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
+  const b = bbox(pts);
+  return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+}
+
+function transformSelected(fn) {
+  const els = selectedEls();
+  if (!els.length) return;
+  const c = selectionCenter(els);
+  commit(() => els.forEach((el) => replaceEl(fn(el, c))));
+}
+
+const rotateSelected = (deg) => transformSelected((el, c) => rotateElement(el, c, deg));
+const mirrorSelected = (axis) => transformSelected((el, c) => mirrorElement(el, c, axis));
+
+// id（一つか配列）を選ぶ。add なら今の選択に足し引きする。
+function select(ids, { add = false } = {}) {
+  const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
+  if (add) {
+    const set = new Set(state.sel);
+    for (const id of list) set.has(id) ? set.delete(id) : set.add(id);
+    state.sel = [...set];
+  } else state.sel = list;
+  state.vsel = null;
   render();
   renderPanel();
 }
@@ -354,6 +405,8 @@ const spOf = (e) => {
   return [e.clientX - r.left, e.clientY - r.top];
 };
 
+const visibleEls = () => sortedForDraw(live(state.doc)).filter((x) => !(state.doc.settings.hiddenLayers || []).includes(KINDS[x.kind].layer));
+
 function snapAt(sp, e, exclude) {
   const d = state.draft;
   const s = e.altKey
@@ -383,7 +436,7 @@ svg.addEventListener('pointerdown', (e) => {
   }
   if (pointers.size > 2) return;
   const v = currentView();
-  if (e.button === 1 || spaceDown) {
+  if (e.button === 1 || e.button === 2 || spaceDown) {
     gesture = { type: 'pan', start: sp, view0: { ...view } };
     return;
   }
@@ -404,19 +457,25 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.tool === 'select') {
-    const sel = byId(state.selection);
+    const sel = state.sel.length === 1 && byId(state.sel[0]);
     if (sel) {
       const h = handlesOf(sel).find((h) => dist(v.toS(h.p), sp) <= (e.pointerType === 'touch' ? 16 : 9));
       if (h) {
-        gesture = { type: 'vertex', el: sel, h, before: snapshot(), moved: false };
+        gesture = { type: 'vertex', el: sel, h, before: snapshot(), moved: false, start: sp, bend: h.mid && (state.bend || e.shiftKey) };
         return;
       }
     }
-    const els = sortedForDraw(live(state.doc)).filter((x) => !(state.doc.settings.hiddenLayers || []).includes(KINDS[x.kind].layer));
+    const els = visibleEls();
     const hit = hitElement(els, v, sp, e.pointerType === 'touch' ? 14 : 8);
     if (hit) {
-      if (state.selection !== hit.id) select(hit.id);
-      gesture = { type: 'move', el: hit, startW: v.toW(sp), orig: structuredClone(hit.pts), before: snapshot(), moved: false, start: sp };
+      if (e.shiftKey || e.ctrlKey || e.metaKey) select(hit.id, { add: true });
+      else if (!state.sel.includes(hit.id)) select(hit.id);
+      else if (state.vsel) { state.vsel = null; render(); }
+      const group = selectedEls();
+      if (!group.includes(hit)) return;
+      gesture = { type: 'move', els: group, hitId: hit.id, keepGroup: e.shiftKey || e.ctrlKey || e.metaKey, startW: v.toW(sp), orig: group.map((g) => structuredClone(g)), before: snapshot(), moved: false, start: sp };
+    } else if (e.pointerType === 'mouse') {
+      gesture = { type: 'box', start: sp, add: e.shiftKey || e.ctrlKey || e.metaKey };
     } else {
       gesture = { type: 'pan', start: sp, view0: { ...view }, clickClears: true };
     }
@@ -450,6 +509,12 @@ svg.addEventListener('pointermove', (e) => {
     render();
     return;
   }
+  if (gesture?.type === 'box') {
+    if (dist(sp, gesture.start) < 4 && !state.box) return;
+    state.box = [gesture.start, sp];
+    renderOverlayOnly();
+    return;
+  }
   if (gesture?.type === 'sheetmove') {
     gesture.moved = true;
     const g = state.doc.settings.gridOn ? state.doc.settings.grid : 1;
@@ -479,18 +544,28 @@ svg.addEventListener('pointermove', (e) => {
       dx = Math.round(dx / g) * g;
       dy = Math.round(dy / g) * g;
     }
-    gesture.el.pts = gesture.orig.map((p) => [round(p[0] + dx), round(p[1] + dy)]);
+    gesture.els.forEach((el, k) => { el.pts = gesture.orig[k].pts.map((p) => [round(p[0] + dx), round(p[1] + dy)]); });
     render();
     return;
   }
   if (gesture?.type === 'vertex') {
-    const { el, h } = gesture;
+    const { h } = gesture;
+    if (!gesture.moved && dist(sp, gesture.start) < 4) return;
+    const el = byId(gesture.el.id);
     const s = snapAt(sp, e, el.id);
     gesture.moved = true;
     if (h.radius) {
       el.r = Math.max(round(dist(el.pts[0], v.toW(sp))), 50);
+    } else if (h.mid && gesture.bend) {
+      // 辺を、指した点を通る弧にする。弦に近ければまっすぐに戻す。
+      const n = el.pts.length;
+      const a = el.pts[h.i], b = el.pts[(h.i + 1) % n];
+      replaceEl(setBulge(el, h.i, bulgeThrough(a, b, v.toW(sp), 6 / view.scale)));
+      state.snap = null;
+      render();
+      return;
     } else if (h.mid) {
-      el.pts.splice(h.i + 1, 0, [round(s.p[0]), round(s.p[1])]);
+      replaceEl(insertVertex(el, h.i, s.p));
       gesture.h = { i: h.i + 1 };
     } else {
       el.pts[h.i] = [round(s.p[0]), round(s.p[1])];
@@ -525,17 +600,44 @@ function endPointer(e) {
     }
     return;
   }
-  if (g.type === 'pan' && g.clickClears && state.selection) select(null);
+  if (g.type === 'pan' && g.clickClears && state.sel.length) select(null);
+  if (g.type === 'box') {
+    const box = state.box;
+    state.box = null;
+    if (!box) {
+      if (!g.add && (state.sel.length || state.vsel)) select(null);
+      else renderOverlayOnly();
+    } else {
+      const v = currentView();
+      const [a, b] = [v.toW(box[0]), v.toW(box[1])];
+      const hits = elementsInBox(visibleEls(), Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), box[1][0] < box[0][0]);
+      const ids = hits.map((x) => x.id);
+      select(g.add ? [...new Set([...state.sel, ...ids])] : ids);
+    }
+  }
+  if (g.type === 'vertex' && !g.moved && !g.h.mid && !g.h.radius) {
+    // 頂点を押しただけなら、その頂点を選ぶ（Delete で消せる）。
+    state.vsel = { id: g.el.id, i: g.h.i };
+    renderOverlayOnly();
+    renderPanel();
+  }
   if (g.type === 'sheetmove' && g.moved) setSheet({});
   if (g.type === 'ulmove' && g.moved) {
     touch(ulById(g.orig.id));
     pushHistory(g.before);
     changed();
   }
-  if ((g.type === 'move' || g.type === 'vertex') && g.moved) {
-    touch(g.el);
+  if (g.type === 'move' && !g.moved && !g.keepGroup && state.sel.length > 1) select(g.hitId);
+  if (g.type === 'move' && g.moved) {
+    g.els.forEach((el) => touch(el));
+    pushHistory(g.before);
+    changed();
+  }
+  if (g.type === 'vertex' && g.moved) {
+    const el = byId(g.el.id);
+    touch(el);
     state.snap = null;
-    if (g.el.r) state.lastTreeR = g.el.r;
+    if (el.r) state.lastTreeR = el.r;
     pushHistory(g.before);
     changed();
   }
@@ -619,6 +721,11 @@ document.addEventListener('keydown', (e) => {
     duplicateSelected();
     return;
   }
+  if (mod && e.key.toLowerCase() === 'a' && state.tool === 'select') {
+    e.preventDefault();
+    select(visibleEls().map((x) => x.id));
+    return;
+  }
   if (mod) return;
   switch (e.key) {
     case 'Escape':
@@ -626,6 +733,7 @@ document.addEventListener('keydown', (e) => {
       else if (state.ulMode) exitUlMode();
       else if (state.draft?.pts.length) cancelDraft();
       else if (state.tool !== 'select') setTool('select');
+      else if (state.vsel) { state.vsel = null; renderOverlayOnly(); renderPanel(); }
       else select(null);
       break;
     case 'Enter':
@@ -672,7 +780,9 @@ function field(name, value, { numeric, choices, unit } = {}) {
 function renderPanel() {
   const p = $('panel');
   if (state.sheetMode) return renderSheetPanel(p);
-  const el = byId(state.selection);
+  const many = selectedEls();
+  if (many.length > 1) return renderMultiPanel(p, many);
+  const el = many[0];
   if (el) {
     const def = KINDS[el.kind];
     const m = measure(el);
@@ -681,14 +791,23 @@ function renderPanel() {
     if (def.geom === 'circle') fields.push(field('葉張', el.r * 2, { numeric: true, unit: 'mm' }));
     const facts = [];
     if (m.area !== undefined) facts.push(['面積', `${(m.area / 1e6).toFixed(2)} m²`]);
+    if (m.perimeter !== undefined) facts.push(['周長', fmtLen(m.perimeter)]);
     if (m.length !== undefined) facts.push(['長さ', fmtLen(m.length)]);
-    if (def.geom === 'polygon' || def.geom === 'polyline') facts.push(['頂点', `${el.pts.length}`]);
+    const shaped = def.geom === 'polygon' || def.geom === 'polyline';
+    if (shaped) facts.push(['頂点', `${el.pts.length}`]);
+    const vsel = state.vsel && state.vsel.id === el.id ? state.vsel.i : null;
     p.innerHTML = `
       <section class="psec">
         <h2>${def.label}<small>${def.layer}</small></h2>
         <form id="props" class="fields" onsubmit="return false">${fields.join('')}</form>
         ${facts.length ? `<dl class="facts">${facts.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>` : ''}
-        <p class="muted small">頂点の四角を引くと形が変わり、辺の丸を引くと頂点が増えます。</p>
+        ${vsel !== null ? `<div class="vsel-box"><span>頂点 ${vsel + 1} を選んでいます</span><button type="button" id="p-vdel" class="danger">頂点を消す</button></div>` : ''}
+        ${shaped ? `<p class="muted small">頂点の四角を引くと動き、押すと選べます（Delete で消す）。辺の丸を引くと${state.bend ? '辺が曲がります' : '頂点が増えます'}。</p>
+        <div class="row">
+          <button type="button" id="p-bend" aria-pressed="${state.bend}">辺を曲げる</button>
+          ${el.b ? '<button type="button" id="p-straight">曲げを消す</button>' : ''}
+        </div>` : ''}
+        ${transformTools()}
         <div class="row">
           <button type="button" id="p-dup">複製</button>
           <button type="button" id="p-del" class="danger">削除</button>
@@ -712,8 +831,12 @@ function renderPanel() {
       }, { panel: false });
     });
     $('p-dup').onclick = duplicateSelected;
-    $('p-del').onclick = deleteSelected;
+    $('p-del').onclick = () => { state.vsel = null; deleteSelected(); };
     $('p-close').onclick = () => select(null);
+    if ($('p-vdel')) $('p-vdel').onclick = deleteVertex;
+    if ($('p-bend')) $('p-bend').onclick = () => { state.bend = !state.bend; renderPanel(); renderOverlayOnly(); };
+    if ($('p-straight')) $('p-straight').onclick = () => commit(() => { const x = { ...el }; delete x.b; replaceEl(x); });
+    bindTransformTools(p);
     return;
   }
   const d = state.doc;
@@ -825,7 +948,8 @@ async function markSynced() {
 
 function openDoc(doc, { fit = true } = {}) {
   state.doc = doc;
-  state.selection = null;
+  state.sel = [];
+  state.vsel = null;
   undoStack = [];
   redoStack = [];
   setTool('select');
@@ -850,7 +974,7 @@ async function ensureBlobUrls() {
   }
   if (added) {
     render();
-    if (!state.selection) renderPanel();
+    if (!state.sel.length) renderPanel();
   }
 }
 
@@ -891,7 +1015,7 @@ async function addUnderlayFromFile(file) {
     });
     const first = live(state.doc).length === 0;
     setTool('select');
-    state.selection = null;
+    state.sel = [];
     commit(() => state.doc.underlays.push(ul));
     if (first) fitView();
     toast(r.paperMmPerPx
@@ -1203,6 +1327,59 @@ $('file-import').onchange = async (ev) => {
   await importDocs(items);
   $('dlg-vault').close();
 };
+
+// ---------- 回す・映す ----------
+
+const transformTools = () => `
+  <div class="row tight" role="group" aria-label="回す・映す">
+    <button type="button" data-x="ccw" title="左へ 90° 回す">⟲ 90°</button>
+    <button type="button" data-x="cw" title="右へ 90° 回す">⟳ 90°</button>
+    <button type="button" data-x="mx">左右反転</button>
+    <button type="button" data-x="my">上下反転</button>
+  </div>
+  <label class="field"><span>回す<small>°</small></span><input type="text" inputmode="decimal" id="p-rot" placeholder="左回りが正。Enter"></label>`;
+
+function bindTransformTools(p) {
+  p.querySelectorAll('[data-x]').forEach((b) => {
+    b.onclick = () => ({ ccw: () => rotateSelected(-90), cw: () => rotateSelected(90), mx: () => mirrorSelected('x'), my: () => mirrorSelected('y') })[b.dataset.x]();
+  });
+  const rot = p.querySelector('#p-rot');
+  rot.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    const deg = Number(String(rot.value).replace(/[０-９．－]/g, (c) => (c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))));
+    if (!Number.isFinite(deg) || !deg) return toast('角度を数で入れてください（左回りが正）');
+    rotateSelected(-deg); // 画面は y 下向きなので、左回りは負の向き
+  });
+}
+
+function renderMultiPanel(p, els) {
+  let area = 0, length = 0;
+  for (const el of els) {
+    const m = measure(el);
+    area += m.area || 0;
+    length += m.length || 0;
+  }
+  const facts = [['部材', `${els.length}`]];
+  if (area) facts.push(['面積の計', `${(area / 1e6).toFixed(2)} m²`]);
+  if (length) facts.push(['長さの計', fmtLen(length)]);
+  p.innerHTML = `
+    <section class="psec">
+      <h2>${els.length} 個を選んでいます</h2>
+      <dl class="facts">${facts.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>
+      <p class="muted small">どれか一つを引くと、まとめて動きます。Shift を押しながら押すと、足したり外したりできます。</p>
+      ${transformTools()}
+      <div class="row">
+        <button type="button" id="p-dup">複製</button>
+        <button type="button" id="p-del" class="danger">削除</button>
+        <button type="button" id="p-close">選択を外す</button>
+      </div>
+    </section>`;
+  $('p-dup').onclick = duplicateSelected;
+  $('p-del').onclick = deleteSelected;
+  $('p-close').onclick = () => select(null);
+  bindTransformTools(p);
+}
 
 // ---------- 図面（印刷・PDF） ----------
 

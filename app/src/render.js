@@ -1,7 +1,7 @@
 // 図を SVG に描く。毎回、画面座標（px）で組み直す。
 
 import { KINDS, live, sortedForDraw, measure } from './model.js';
-import { centroid, dist } from './geometry.js';
+import { centroid, dist, densify, arcOf, bulgeAt, segCount } from './geometry.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const f = (v) => Math.round(v * 10) / 10;
@@ -25,6 +25,23 @@ export function makeView(cx, cy, scale, w, h) {
 }
 
 const ptsAttr = (v, pts) => pts.map((p) => v.toS(p).map(f).join(',')).join(' ');
+
+// 辺が円弧のこともある線の SVG パス。画面は y 下向きなので、左手へふくらむ（正）弧は反時計回り＝sweep 0。
+export function pathD(v, pts, bulges, closed) {
+  if (!pts.length) return '';
+  const S = (p) => v.toS(p).map(f).join(' ');
+  let d = 'M' + S(pts[0]);
+  const m = segCount(pts, closed);
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const bu = bulgeAt(bulges, i);
+    if (bu && dist(a, b) > 0) {
+      const r = f(arcOf(a, b, bu).r * v.scale);
+      d += `A${r} ${r} 0 ${Math.abs(bu) > 1 ? 1 : 0} ${bu > 0 ? 0 : 1} ${S(b)}`;
+    } else d += 'L' + S(b);
+  }
+  return closed ? d + 'Z' : d;
+}
 
 function defs(v) {
   const [ox, oy] = v.toS([0, 0]).map(f);
@@ -92,14 +109,15 @@ export function elementShape(v, el, opts = {}) {
     case 'polygon': {
       if (el.pts.length < 2) return '';
       let fill = '';
-      if (el.kind === 'hoso') fill = `<polygon class="hatch" points="${ptsAttr(v, el.pts)}" fill="url(#${MATERIAL_PATTERN[el.props.材料] || 'pat-conc'})"/>`;
-      if (el.kind === 'tatemono') fill = `<polygon class="hatch" points="${ptsAttr(v, el.pts)}" fill="url(#pat-bldg)"/>`;
+      const d = pathD(v, el.pts, el.b, true);
+      if (el.kind === 'hoso') fill = `<path class="hatch" d="${d}" fill="url(#${MATERIAL_PATTERN[el.props.材料] || 'pat-conc'})"/>`;
+      if (el.kind === 'tatemono') fill = `<path class="hatch" d="${d}" fill="url(#pat-bldg)"/>`;
       const mat = el.kind === 'hoso' ? ` m-${MATERIAL_PATTERN[el.props.材料] || 'pat-conc'}` : '';
-      return `<g class="${cls}${mat}" ${id}><polygon class="body" points="${ptsAttr(v, el.pts)}"/>${fill}</g>`;
+      return `<g class="${cls}${mat}" ${id}><path class="body" d="${d}"/>${fill}</g>`;
     }
     case 'polyline':
       if (el.pts.length < 2) return '';
-      return `<g class="${cls}" ${id}><polyline class="body" points="${ptsAttr(v, el.pts)}"/></g>`;
+      return `<g class="${cls}" ${id}><path class="body" d="${pathD(v, el.pts, el.b, false)}"/></g>`;
     case 'circle': {
       const [x, y] = v.toS(el.pts[0]);
       const r = Math.max(el.r * v.scale, 3);
@@ -129,7 +147,7 @@ export function elementShape(v, el, opts = {}) {
 function elementLabel(v, el) {
   const def = KINDS[el.kind];
   if (def.geom === 'polygon' && el.pts.length >= 3 && ['hoso', 'shokusaitai', 'tatemono', 'keiseki'].includes(el.kind)) {
-    const c = v.toS(centroid(el.pts));
+    const c = v.toS(centroid(densify(el.pts, el.b, true)));
     const a = measure(el).area / 1e6;
     const name = el.kind === 'hoso' ? el.props.材料 : el.kind === 'tatemono' ? el.props.名前 || '建物' : el.kind === 'keiseki' ? el.props.石種 || '景石' : el.props.内容 || '植栽帯';
     if (a * 1e6 * v.scale * v.scale < 2500) return '';
@@ -168,7 +186,8 @@ export function renderScene(state, v) {
   const els = sortedForDraw(live(doc)).filter((e) => !hidden.has(KINDS[e.kind].layer));
   const out = [defs(v)];
   if (doc.settings.gridOn) out.push(grid(v, doc.settings.grid));
-  out.push('<g class="shapes">', ...els.map((e) => elementShape(v, e, { cls: state.selection === e.id ? 'sel' : '' })), '</g>');
+  const sel = new Set(state.sel);
+  out.push('<g class="shapes">', ...els.map((e) => elementShape(v, e, { cls: sel.has(e.id) ? 'sel' : '' })), '</g>');
   out.push('<g class="labels">', ...els.map((e) => elementLabel(v, e)), '</g>');
   out.push(scaleBar(v));
   return out.join('');
@@ -177,14 +196,20 @@ export function renderScene(state, v) {
 // 選んだ部材のつまみ、描きかけの線、吸着の印。
 export function renderOverlay(state, v) {
   const out = [];
-  const sel = state.selection && state.doc.elements.find((e) => e.id === state.selection && !e.deleted);
+  const sel = state.sel.length === 1 && state.doc.elements.find((e) => e.id === state.sel[0] && !e.deleted);
   if (sel) {
     for (const h of handlesOf(sel)) {
       const [x, y] = v.toS(h.p).map(f);
+      const picked = state.vsel && state.vsel.id === sel.id && state.vsel.i === h.i && !h.mid && !h.radius;
       out.push(h.mid
-        ? `<circle class="handle mid" cx="${x}" cy="${y}" r="4"/>`
-        : `<rect class="handle" x="${x - 5}" y="${y - 5}" width="10" height="10"/>`);
+        ? `<circle class="handle mid${state.bend ? ' bend' : ''}" cx="${x}" cy="${y}" r="${state.bend ? 5 : 4}"/>`
+        : `<rect class="handle${picked ? ' picked' : ''}" x="${x - 5}" y="${y - 5}" width="10" height="10"/>`);
     }
+  }
+  if (state.box) {
+    const [a, b] = state.box;
+    const crossing = b[0] < a[0];
+    out.push(`<rect class="box${crossing ? ' crossing' : ''}" x="${f(Math.min(a[0], b[0]))}" y="${f(Math.min(a[1], b[1]))}" width="${f(Math.abs(b[0] - a[0]))}" height="${f(Math.abs(b[1] - a[1]))}"/>`);
   }
   const d = state.draft;
   if (d) {
@@ -229,7 +254,8 @@ export function handlesOf(el) {
     const segs = def.geom === 'polygon' ? n : n - 1;
     for (let i = 0; i < segs; i++) {
       const a = el.pts[i], b = el.pts[(i + 1) % n];
-      hs.push({ p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], i, mid: true });
+      const bu = bulgeAt(el.b, i);
+      hs.push({ p: bu && dist(a, b) > 0 ? arcOf(a, b, bu).mid : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], i, mid: true });
     }
   }
   if (def.geom === 'circle') hs.push({ p: [el.pts[0][0] + el.r, el.pts[0][1]], radius: true });

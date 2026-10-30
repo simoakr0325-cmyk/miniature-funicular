@@ -1,7 +1,7 @@
 // 図を図面（PDF）にする。紙の上の寸法は縮尺どおり。
 
 import { KINDS, live, sortedForDraw, measure, liveUnderlays } from './model.js';
-import { centroid, dist, bbox, polygonArea } from './geometry.js';
+import { centroid, dist, bbox, polygonArea, densify } from './geometry.js';
 import { layout, worldToPaper, scaleBarLength } from './sheet.js';
 import { pixelToWorld } from './underlay.js';
 import { Page, buildPdf } from './pdfwriter.js';
@@ -76,7 +76,7 @@ function crown(pg, [cx, cy], r) {
 
 function drawElement(pg, el, P, sheet) {
   const g = KINDS[el.kind].geom;
-  const pts = el.pts.map(P);
+  const pts = (g === 'polygon' || g === 'polyline' ? densify(el.pts, el.b, g === 'polygon', 24) : el.pts).map(P);
   switch (el.kind) {
     case 'shikichi':
       pg.save().stroke(C.ink).lineWidth(0.35).dash([4, 0.8, 0.6, 0.8]).path(pts, true).doStroke().restore();
@@ -144,8 +144,8 @@ function drawDim(pg, [a, b, o]) {
 }
 
 function drawLabels(pg, el, P, sheet) {
-  const pts = el.pts.map(P);
   const g = KINDS[el.kind].geom;
+  const pts = (g === 'polygon' ? densify(el.pts, el.b, true) : el.pts).map(P);
   if (g === 'polygon' && pts.length >= 3 && ['hoso', 'shokusaitai', 'tatemono', 'keiseki'].includes(el.kind)) {
     if (polygonArea(pts) < 120) return;
     const c = centroid(pts);

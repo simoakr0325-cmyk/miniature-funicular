@@ -2,7 +2,7 @@
 // 部材ごとに通し番号（id）と更新時刻（updatedAt）を持たせ、消した部材も
 // deleted で残す。これで二台の端末の図を部材単位で突き合わせられる。
 
-import { polygonArea, polylineLength, dist } from './geometry.js';
+import { dist, areaWithArcs, lengthWithArcs, rotatePts, mirrorPts, segCount } from './geometry.js';
 
 export const FORMAT = 'nawabari';
 export const FORMAT_VERSION = 1;
@@ -187,7 +187,14 @@ export function normalizeDoc(raw) {
       if (e.deleted) return { ...e, pts: [], props: {} };
       const props = { ...KINDS[e.kind].props, ...(e.props || {}) };
       for (const k of Object.keys(props)) if (NUMERIC_PROPS.has(k) && props[k] !== '') props[k] = Number(props[k]) || 0;
-      return { ...e, pts: (e.pts || []).map((p) => [Number(p[0]), Number(p[1])]), props, updatedAt: e.updatedAt || doc.updatedAt };
+      const out = { ...e, pts: (e.pts || []).map((p) => [Number(p[0]), Number(p[1])]), props, updatedAt: e.updatedAt || doc.updatedAt };
+      const g = KINDS[e.kind].geom;
+      if (Array.isArray(e.b) && (g === 'polygon' || g === 'polyline')) {
+        const m = segCount(out.pts, g === 'polygon');
+        out.b = Array.from({ length: m }, (_, i) => Number(e.b[i]) || 0);
+        if (!out.b.some((v) => v)) delete out.b;
+      } else delete out.b;
+      return out;
     });
   doc.underlays = (Array.isArray(raw.underlays) ? raw.underlays : [])
     .filter((u) => u && typeof u.id === 'string' && (u.deleted || (typeof u.blob === 'string' && u.w > 0 && u.h > 0 && u.s > 0)))
@@ -203,8 +210,8 @@ export function normalizeDoc(raw) {
 
 export function measure(el) {
   const g = KINDS[el.kind].geom;
-  if (g === 'polygon') return { area: polygonArea(el.pts) };
-  if (g === 'polyline') return { length: polylineLength(el.pts) };
+  if (g === 'polygon') return { area: areaWithArcs(el.pts, el.b), perimeter: lengthWithArcs(el.pts, el.b, true) };
+  if (g === 'polyline') return { length: lengthWithArcs(el.pts, el.b) };
   if (g === 'dim') return { length: el.pts.length >= 2 ? dist(el.pts[0], el.pts[1]) : 0 };
   if (g === 'circle') return { diameter: el.r * 2 };
   return {};
@@ -241,4 +248,70 @@ export function formatQty(r) {
   if (r.unit === 'm²') return r.value.toFixed(2);
   if (r.unit === 'm') return r.value.toFixed(2);
   return String(r.value);
+}
+
+// ---------- 部材の形を変える ----------
+
+const hasBulges = (el) => Array.isArray(el.b) && el.b.some((v) => v);
+
+export function moveElement(el, dx, dy) {
+  return { ...el, pts: el.pts.map(([x, y]) => [round(x + dx), round(y + dy)]) };
+}
+
+export function rotateElement(el, center, deg) {
+  return { ...el, pts: rotatePts(el.pts, center, deg).map(([x, y]) => [round(x), round(y)]) };
+}
+
+// 映すと辺の回る向きが逆になるので、ふくらみの符号も逆にする。
+export function mirrorElement(el, center, axis) {
+  const out = { ...el, pts: mirrorPts(el.pts, center, axis).map(([x, y]) => [round(x), round(y)]) };
+  if (hasBulges(el)) out.b = el.b.map((v) => -v);
+  return out;
+}
+
+// 頂点 i を消す。形が保てない（面は 3 点、線は 2 点を切る）ときは null。
+export function removeVertex(el, i) {
+  const g = KINDS[el.kind].geom;
+  const min = g === 'polygon' ? 3 : g === 'polyline' ? 2 : Infinity;
+  if (el.pts.length - 1 < min) return null;
+  const out = { ...el, pts: el.pts.filter((_, k) => k !== i) };
+  if (hasBulges(el)) {
+    // 消した頂点の前後の辺は一本の直線になる。
+    const b = [...el.b];
+    const prev = (i - 1 + el.pts.length) % el.pts.length;
+    if (g === 'polygon') {
+      b[prev] = 0;
+      b.splice(i, 1);
+    } else if (i === 0) b.splice(0, 1);
+    else if (i === el.pts.length - 1) b.splice(i - 1, 1);
+    else {
+      b[i - 1] = 0;
+      b.splice(i, 1);
+    }
+    out.b = b;
+    if (!out.b.some((v) => v)) delete out.b;
+  }
+  return out;
+}
+
+// 辺 i の後ろに頂点を足す。分けた二本の辺は直線にする。
+export function insertVertex(el, i, p) {
+  const out = { ...el, pts: [...el.pts.slice(0, i + 1), [round(p[0]), round(p[1])], ...el.pts.slice(i + 1)] };
+  if (hasBulges(el)) {
+    const b = [...el.b];
+    b.splice(i, 1, 0, 0);
+    out.b = b;
+    if (!out.b.some((v) => v)) delete out.b;
+  }
+  return out;
+}
+
+export function setBulge(el, i, v) {
+  const g = KINDS[el.kind].geom;
+  const m = segCount(el.pts, g === 'polygon');
+  const b = Array.from({ length: m }, (_, k) => (el.b && el.b[k]) || 0);
+  b[i] = Math.round(v * 1e4) / 1e4;
+  const out = { ...el, b };
+  if (!b.some((x) => x)) delete out.b;
+  return out;
 }
