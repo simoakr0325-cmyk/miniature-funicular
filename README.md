@@ -42,6 +42,12 @@ npm test
 - PDF は線のまま（ベクタ）で、紙の上の寸法は縮尺どおりです。印刷するときは倍率を「実際のサイズ（100%）」にしてください。
 - 日本語の書体は埋め込まず、標準の日本語書体名（平成角ゴシック）を指定しています。見る側の端末の日本語書体で表示されます。ファイルは小さく済みます。
 
+## DXF
+
+- 「図面」の欄の「DXF を書き出す」から。AutoCAD R12 形式・Shift_JIS・mm 単位で、Jw_cad・AutoCAD・Vectorworks で開ける形を狙っています。
+- 部材の種類ごとに画層を分けます（敷地境界・建物・舗装・植栽帯・景石・塀・擁壁・縁石・見切・樹木・高さ・寸法・文字・注記）。円弧の辺はふくらみ（bulge）のまま渡します。
+- 塗り（ハッチング）と下図は入りません。寸法は線と文字で描きます（寸法の部品ではありません）。
+
 ## Obsidian との受け渡し
 
 [docs/obsidian.md](docs/obsidian.md) を見てください。
@@ -54,6 +60,7 @@ npm test
   - `src/vault.js` vault のフォルダへの直接書き込み、共有シート
   - `src/underlay.js` 下図（PDF・写真の読み込み、縮尺・二点での合わせ）
   - `src/sheet.js` `src/plot.js` `src/pdfwriter.js` 図面（用紙・縮尺・表題欄）と PDF の組み立て
+  - `src/dxf.js` `src/sjis.js` DXF の書き出しと Shift_JIS への変換
   - `src/geometry.js` `src/hit.js` `src/render.js` `src/main.js` 計算・当たり判定・描画・操作
 - `app/vendor/pdfjs/` PDF を読むための pdf.js 4.10.38（Apache 2.0、電波なしで使うため同梱）
 - `tests/` 試験（`node --test`）

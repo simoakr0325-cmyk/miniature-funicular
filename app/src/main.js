@@ -10,6 +10,7 @@ import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from '
 import * as UL from './underlay.js';
 import * as SH from './sheet.js';
 import { plotSheet } from './plot.js';
+import { buildDxf, dxfFileName } from './dxf.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -1465,6 +1466,9 @@ function renderSheetPanel(p) {
       <button type="button" id="sh-pdf" class="primary wide">PDF を書き出す</button>
       ${hasFolder ? '<button type="button" id="sh-open" class="wide">開いて印刷する</button><button type="button" id="sh-folder" class="wide">Obsidian のフォルダに置く</button>' : ''}
       <p class="muted small">印刷するときは倍率を「実際のサイズ（100%）」にしてください。「用紙に合わせる」にすると縮尺がずれます。iPhone では共有シートから「プリント」か「ファイルに保存」を選べます。</p>
+      <button type="button" id="sh-dxf" class="wide">DXF を書き出す</button>
+      ${hasFolder ? '<button type="button" id="sh-dxf-folder" class="wide">DXF を Obsidian のフォルダに置く</button>' : ''}
+      <p class="muted small">DXF は AutoCAD R12 形式・Shift_JIS・mm 単位です（Jw_cad・AutoCAD・Vectorworks 向け）。部材の種類ごとに画層を分け、文字は図面の縮尺で 2.5mm の高さにします。</p>
       <button type="button" id="sh-close" class="wide">終わる</button>
     </section>`;
   p.querySelector('#sheet-form').addEventListener('change', (ev) => {
@@ -1487,6 +1491,8 @@ function renderSheetPanel(p) {
     fitSheet();
   };
   $('sh-pdf').onclick = () => exportPdf('share');
+  $('sh-dxf').onclick = () => exportDxf('share');
+  if ($('sh-dxf-folder')) $('sh-dxf-folder').onclick = () => exportDxf('folder');
   if (hasFolder) {
     $('sh-open').onclick = () => exportPdf('open');
     $('sh-folder').onclick = () => exportPdf('folder');
@@ -1552,6 +1558,29 @@ async function exportPdf(how) {
   } catch (err) {
     win?.close();
     toast('PDF を作れませんでした：' + err.message);
+  }
+}
+
+function makeDxfFile() {
+  const sh = SH.sheetOf(state.doc);
+  const bytes = buildDxf(state.doc, { textHeight: 2.5 * sh.scale });
+  return new File([bytes], dxfFileName(state.doc), { type: 'application/dxf' });
+}
+
+async function exportDxf(how) {
+  try {
+    const file = makeDxfFile();
+    if (how === 'folder') {
+      const h = await vault.getFolder();
+      if (!h) return toast('先に「Obsidian」で vault のフォルダを選んでください');
+      await vault.writeToFolder(h, file);
+      toast(`${file.name} を Obsidian のフォルダに置きました`);
+    } else {
+      const r = await vault.shareOrDownload([file], file.name);
+      if (r !== 'cancelled') toast(r === 'shared' ? 'DXF を渡しました' : `${file.name} を書き出しました`);
+    }
+  } catch (err) {
+    toast('DXF を作れませんでした：' + err.message);
   }
 }
 
