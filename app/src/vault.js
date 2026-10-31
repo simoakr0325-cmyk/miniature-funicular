@@ -154,3 +154,22 @@ export async function writeToFolder(handle, file) {
   await w.write(file);
   await w.close();
 }
+
+// フォルダの中の下図の画像のうち、どのノートからも使われていないものを消す。
+// 消したのは、どのノートにも生きた下図として載っていない画像だけ。
+export async function cleanFolderBlobs(handle) {
+  const notes = await listNotes(handle);
+  if (notes.some((n) => n.error)) throw new Error('読めないノートがあるので掃除しません');
+  const used = new Set(notes.flatMap((n) => liveUnderlays(n.doc).map(blobFileName)));
+  let count = 0, bytes = 0;
+  const names = [];
+  for await (const [name, entry] of handle.entries()) {
+    if (entry.kind === 'file' && /^下図_[0-9a-f]{16}\.(png|jpg)$/.test(name) && !used.has(name)) names.push([name, entry]);
+  }
+  for (const [name, entry] of names) {
+    bytes += (await entry.getFile()).size;
+    await handle.removeEntry(name);
+    count++;
+  }
+  return { count, bytes };
+}

@@ -38,6 +38,8 @@ export const setKV = (k, v) => run('kv', 'readwrite', (s) => s.put(v, k));
 // 下図の画像。中身の指紋を鍵にするので、同じ画像は一つで済む。
 export const getBlob = (hash) => run('blobs', 'readonly', (s) => s.get(hash));
 export const putBlob = (hash, blob) => run('blobs', 'readwrite', (s) => s.put(blob, hash));
+export const blobKeys = () => run('blobs', 'readonly', (s) => s.getAllKeys());
+export const deleteBlob = (hash) => run('blobs', 'readwrite', (s) => s.delete(hash));
 
 // iPhone では、ホーム画面に追加したうえでこれを通すと消されにくくなる。
 export async function requestPersist() {

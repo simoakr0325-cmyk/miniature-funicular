@@ -429,6 +429,8 @@ svg.addEventListener('pointerdown', (e) => {
   const sp = spOf(e);
   pointers.set(e.pointerId, sp);
   if (pointers.size === 2) {
+    clearTimeout(gesture?.hold);
+    if (gesture?.type === 'box') state.box = null;
     if (gesture?.before) {
       restore(gesture.before);
       render();
@@ -480,7 +482,17 @@ svg.addEventListener('pointerdown', (e) => {
     } else if (e.pointerType === 'mouse') {
       gesture = { type: 'box', start: sp, add: e.shiftKey || e.ctrlKey || e.metaKey };
     } else {
-      gesture = { type: 'pan', start: sp, view0: { ...view }, clickClears: true };
+      // 指：何もない所を引けば画面が動く。動かさずに長押しすると範囲選択になる。
+      const g = { type: 'pan', start: sp, view0: { ...view }, clickClears: true };
+      g.hold = setTimeout(() => {
+        if (gesture !== g || pointers.size !== 1) return;
+        view = g.view0;
+        gesture = { type: 'box', start: sp, add: state.sel.length > 0, touch: true };
+        state.box = [sp, sp];
+        render();
+        toast(state.sel.length ? '範囲で足す（引いて広げる）' : '範囲で選ぶ（引いて広げる）');
+      }, 450);
+      gesture = g;
     }
     return;
   }
@@ -509,6 +521,7 @@ svg.addEventListener('pointermove', (e) => {
     view.cx = gesture.view0.cx - (sp[0] - gesture.start[0]) / view.scale;
     view.cy = gesture.view0.cy - (sp[1] - gesture.start[1]) / view.scale;
     if (dist(sp, gesture.start) > 4) gesture.clickClears = false;
+    if (dist(sp, gesture.start) > 8) clearTimeout(gesture.hold);
     render();
     return;
   }
@@ -597,8 +610,13 @@ function endPointer(e) {
     return;
   }
   if (pointers.size) return;
+  clearTimeout(g.hold);
   gesture = null;
   if (e.type === 'pointercancel') {
+    if (state.box) {
+      state.box = null;
+      renderOverlayOnly();
+    }
     if (g.before) {
       restore(g.before);
       render();
@@ -607,9 +625,13 @@ function endPointer(e) {
   }
   if (g.type === 'pan' && g.clickClears && state.sel.length) select(null);
   if (g.type === 'box') {
-    const box = state.box;
+    let box = state.box;
     state.box = null;
-    if (!box) {
+    if (box && g.touch && dist(box[0], box[1]) < 8) {
+      // 長押しして離しただけなら何もしない。
+      renderOverlayOnly();
+      box = null;
+    } else if (!box) {
       if (!g.add && (state.sel.length || state.vsel)) select(null);
       else renderOverlayOnly();
     } else {
@@ -1201,8 +1223,55 @@ async function showSites() {
       showSites();
     }
   };
+  showBlobUsage();
   if (!$('dlg-site').open) $('dlg-site').showModal();
 }
+
+// 端末の中の下図の画像のうち、どの現場の図（元に戻す履歴も含む）からも使われていないものを消す。
+async function blobsInUse() {
+  const used = new Set();
+  const add = (d) => liveUnderlays(d).forEach((u) => used.add(u.blob));
+  (await store.listDocs()).forEach(add);
+  add(state.doc);
+  [...undoStack, ...redoStack].forEach((snap) => add({ underlays: snap.underlays }));
+  return used;
+}
+
+async function showBlobUsage() {
+  const used = await blobsInUse();
+  const keys = await store.blobKeys();
+  const unused = keys.filter((k) => !used.has(k)).length;
+  $('blob-usage').textContent = `下図の画像 ${keys.length} 枚（使っていないもの ${unused} 枚）`;
+  $('btn-clean-blobs').disabled = !unused;
+}
+
+$('btn-clean-blobs').onclick = async () => {
+  await saveNow();
+  const used = await blobsInUse();
+  const unused = (await store.blobKeys()).filter((k) => !used.has(k));
+  if (!unused.length) return;
+  let bytes = 0;
+  for (const k of unused) {
+    bytes += (await store.getBlob(k))?.size || 0;
+    await store.deleteBlob(k);
+  }
+  toast(`使っていない下図の画像 ${unused.length} 枚（${fmtBytes(bytes)}）を消しました`);
+  showBlobUsage();
+};
+
+$('btn-clean-folder').onclick = async () => {
+  const h = await vault.getFolder();
+  if (!h) return;
+  if (!confirm('フォルダの中の「下図_…」の画像のうち、どの縄張りノートからも使われていないものを消します。よろしいですか。')) return;
+  try {
+    const { count, bytes } = await vault.cleanFolderBlobs(h);
+    toast(count ? `フォルダから ${count} 枚（${fmtBytes(bytes)}）を消しました` : '消すものはありませんでした');
+  } catch (err) {
+    toast('掃除できませんでした：' + err.message);
+  }
+};
+
+const fmtBytes = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.ceil(b / 1024)} KB`);
 
 $('btn-new-site').onclick = () => {
   openDoc(createDoc());
@@ -1226,6 +1295,7 @@ async function showVault() {
     const h = await vault.getFolder();
     $('folder-name').textContent = h ? h.name : '未選択';
     $('btn-sync').disabled = !h;
+    $('btn-clean-folder').disabled = !h;
     $('note-list').innerHTML = '';
     if (h) refreshNoteList(h, false);
   }
@@ -1292,6 +1362,7 @@ $('btn-pick-folder').onclick = async () => {
     const h = await vault.pickFolder();
     $('folder-name').textContent = h.name;
     $('btn-sync').disabled = false;
+    $('btn-clean-folder').disabled = false;
     refreshNoteList(h);
   } catch (err) {
     if (err.name !== 'AbortError') toast(err.message);

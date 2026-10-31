@@ -347,3 +347,4 @@ image.ul { mix-blend-mode: multiply; }
 }
 .coords th:first-child { width: 2em; color: var(--muted); }
 .coords thead th { font-size: 0.75rem; color: var(--muted); text-align: right; }
+.clean-line { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); }
