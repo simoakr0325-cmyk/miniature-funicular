@@ -1,5 +1,6 @@
 // 下図（測量図 PDF・写真）。画像は端末の中に別に置き、図には置き方だけを持つ。
 // 置き方：画像の左上の画素が図の (x, y) mm に来て、1 画素が s mm、rot 度（画面で時計回り）回る。
+// k は縦の伸び（地理院タイルのように縦と横で 1 画素の大きさが違う画像のため。ふつうは無い＝1）。
 
 import { dist } from './geometry.js';
 import { decodeDxf, parseDxf, toUnderlayGeometry } from './dxfread.js';
@@ -12,7 +13,7 @@ const rot = ([x, y], deg) => {
 
 // 画像の画素 (u, v) が図のどこに来るか。
 export function pixelToWorld(ul, [u, v]) {
-  const [dx, dy] = rot([u * ul.s, v * ul.s], ul.rot);
+  const [dx, dy] = rot([u * ul.s, v * ul.s * (ul.k || 1)], ul.rot);
   return [ul.x + dx, ul.y + dy];
 }
 
@@ -80,7 +81,7 @@ export function blobFileName(ul) {
 const MAX_SIDE = 4000;
 const MAX_PIXELS = 16e6; // iPhone の canvas の上限に収める
 
-async function hashOf(blob) {
+export async function hashOf(blob) {
   try {
     const buf = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
     return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');

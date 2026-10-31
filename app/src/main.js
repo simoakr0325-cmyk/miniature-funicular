@@ -13,6 +13,8 @@ import * as SH from './sheet.js';
 import { plotSheet, plotSheets } from './plot.js';
 import { buildDxf, dxfFileName } from './dxf.js';
 import * as SV from './survey.js';
+import * as LL from './latlng.js';
+import * as GSI from './gsimap.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -898,6 +900,7 @@ function renderPanel() {
       </form>
     </section>
     ${underlayPanel()}
+    ${placePanel()}
     <section class="psec">
       <h2>数量</h2>
       ${rows.length ? `<table class="qty"><tbody>${rows.map((r) => `<tr><th>${r.label}</th><td>${formatQty(r)}</td><td>${r.unit}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">部材を描くとここに出ます。</p>'}
@@ -922,6 +925,7 @@ function renderPanel() {
     changed({ panel: false });
   });
   bindUnderlayPanel(p);
+  bindPlacePanel();
   $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
@@ -1119,6 +1123,110 @@ async function addUnderlayFromFile(file) {
     openPanelOnNarrow();
   } catch (err) {
     toast('下図を敷けませんでした：' + err.message);
+  }
+}
+
+// ---------- 場所（緯度経度・地理院地図） ----------
+
+function placePanel() {
+  const geo = state.doc.settings.geo;
+  const zoneOpts = (cur) => SV.ZONES.map((z, i) => `<option value="${i + 1}"${i + 1 === cur ? ' selected' : ''}>第${z}系</option>`).join('');
+  if (!geo) {
+    return `<section class="psec">
+      <h2>場所</h2>
+      <label class="field"><span>緯度経度</span><input type="text" id="pl-latlng" placeholder="36.6513, 138.1810" autocomplete="off"></label>
+      <label class="field"><span>座標系</span><select id="pl-zone">${zoneOpts(8)}</select></label>
+      <button type="button" id="pl-set" disabled>この場所を図の原点にする</button>
+      <p class="muted small">地図アプリの緯度経度を貼ると、そこを図の原点（0, 0）にします。座標系は都道府県で決まります（長野県は第Ⅷ系）。地積測量図があれば、道具の「座標」から入れる方が正確です。</p>
+    </section>`;
+  }
+  if (!geo.zone) {
+    return `<section class="psec">
+      <h2>場所</h2>
+      <label class="field"><span>座標系</span><select id="pl-zone">${zoneOpts(0)}</select></label>
+      <p class="muted small">座標系を決めると、緯度経度と地理院地図が使えます。</p>
+    </section>`;
+  }
+  const c = GSI.worldToLatLng(geo, [view.cx, view.cy]);
+  const url = `https://maps.gsi.go.jp/#18/${c.lat.toFixed(6)}/${c.lng.toFixed(6)}/`;
+  return `<section class="psec">
+    <h2>場所<small>第${SV.ZONES[geo.zone - 1]}系</small></h2>
+    <p class="small">画面の中心　<b id="pl-center">${LL.fmtDeg(c.lat)}, ${LL.fmtDeg(c.lng)}</b></p>
+    <div class="row">
+      <select id="pl-layer" aria-label="地図の種類">${Object.entries(GSI.GSI_LAYERS).map(([k, l]) => `<option value="${k}">${l.label}</option>`).join('')}</select>
+      <select id="pl-range" aria-label="範囲"><option value="50">100 m 四方</option><option value="100" selected>200 m 四方</option><option value="200">400 m 四方</option></select>
+    </div>
+    <button type="button" id="pl-gsi">地理院地図を下図に敷く</button>
+    <div class="row"><a class="btn" id="pl-open" href="${url}" target="_blank" rel="noopener">地理院地図で開く</a><button type="button" id="pl-copy">緯度経度をコピー</button></div>
+    <p class="muted small">画面の中心を真ん中にして、地理院タイル（出典：国土地理院）を取って敷きます。電波が要ります。</p>
+  </section>`;
+}
+
+function bindPlacePanel() {
+  const geo = state.doc.settings.geo;
+  if (!geo) {
+    $('pl-latlng').oninput = (ev) => {
+      const ll = LL.parseLatLng(ev.target.value);
+      $('pl-set').disabled = !ll;
+      if (ll) $('pl-zone').value = String(LL.guessZone(ll.lat, ll.lng));
+    };
+    $('pl-set').onclick = () => {
+      const ll = LL.parseLatLng($('pl-latlng').value);
+      if (!ll) return;
+      const zone = Number($('pl-zone').value);
+      const { X, Y } = LL.toPlane(ll.lat, ll.lng, zone);
+      state.doc.settings.geo = { origin: [Math.round(X * 1000) / 1000, Math.round(Y * 1000) / 1000], zone };
+      view.cx = 0;
+      view.cy = 0;
+      changed();
+      toast(`図の原点を X ${X.toFixed(3)}　Y ${Y.toFixed(3)}（第${SV.ZONES[zone - 1]}系）にしました`);
+    };
+    return;
+  }
+  if (!geo.zone) {
+    $('pl-zone').onchange = (ev) => {
+      state.doc.settings.geo = { ...geo, zone: Number(ev.target.value) };
+      changed();
+    };
+    return;
+  }
+  $('pl-gsi').onclick = () => addGsiUnderlay($('pl-layer').value, Number($('pl-range').value));
+  $('pl-copy').onclick = async () => {
+    const c = GSI.worldToLatLng(geo, [view.cx, view.cy]);
+    try {
+      await navigator.clipboard.writeText(`${LL.fmtDeg(c.lat)}, ${LL.fmtDeg(c.lng)}`);
+      toast('緯度経度をコピーしました');
+    } catch {
+      toast('コピーできませんでした');
+    }
+  };
+  // 地理院地図へのリンクは、押す直前の画面の中心にする。
+  $('pl-open').onclick = (ev) => {
+    const c = GSI.worldToLatLng(geo, [view.cx, view.cy]);
+    ev.currentTarget.href = `https://maps.gsi.go.jp/#18/${c.lat.toFixed(6)}/${c.lng.toFixed(6)}/`;
+  };
+}
+
+async function addGsiUnderlay(layer, half) {
+  const geo = state.doc.settings.geo;
+  try {
+    toast('地理院タイルを取っています…');
+    const plan = GSI.planGsi(geo, [view.cx, view.cy], half, layer);
+    const { blob, got, total } = await GSI.fetchGsi(plan);
+    const hash = await UL.hashOf(blob);
+    await store.putBlob(hash, blob);
+    if (!blobUrls.has(hash)) blobUrls.set(hash, URL.createObjectURL(blob));
+    const ul = createUnderlay({ name: plan.name, blob: hash, mime: 'image/jpeg', w: plan.w, h: plan.h, ...plan.place });
+    ul.k = plan.place.k;
+    ul.opacity = 0.5;
+    setTool('select');
+    state.sel = [];
+    const first = live(state.doc).length === 0;
+    commit(() => state.doc.underlays.push(ul));
+    if (first) fitView();
+    toast(`${plan.name}を敷きました${got < total ? `（${total - got} 枚のタイルが取れませんでした）` : ''}。出典：国土地理院`);
+  } catch (err) {
+    toast('地理院地図を敷けませんでした：' + err.message);
   }
 }
 
@@ -1558,11 +1666,12 @@ async function copyCoords(el) {
   const geo = state.doc.settings.geo;
   const text = el.pts.map((p, i) => {
     const { X, Y } = SV.toSurvey(geo, p);
-    return `${i + 1}\t${SV.fmtCoord(X)}\t${SV.fmtCoord(Y)}`;
+    const ll = geo.zone ? LL.toLatLng(X, Y, geo.zone) : null;
+    return `${i + 1}\t${SV.fmtCoord(X)}\t${SV.fmtCoord(Y)}` + (ll ? `\t${LL.fmtDeg(ll.lat)}\t${LL.fmtDeg(ll.lng)}` : '');
   }).join('\n');
   try {
     await navigator.clipboard.writeText(text);
-    toast('座標をコピーしました（番号・X・Y、タブ区切り）');
+    toast(`座標をコピーしました（番号・X・Y${geo.zone ? '・緯度・経度' : ''}、タブ区切り）`);
   } catch {
     toast('コピーできませんでした');
   }

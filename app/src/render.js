@@ -296,7 +296,7 @@ export function syncUnderlays(g, uls, v, urls, activeId) {
     }
     const [sx, sy] = v.toS([u.x, u.y]);
     const k = u.s * v.scale;
-    node.setAttribute('transform', `translate(${f(sx)},${f(sy)}) rotate(${u.rot}) scale(${k})`);
+    node.setAttribute('transform', `translate(${f(sx)},${f(sy)}) rotate(${u.rot}) scale(${k}${u.k && u.k !== 1 ? `,${k * u.k}` : ''})`);
     node.classList.toggle('active', u.id === activeId);
     if (want === 'vec') {
       node.setAttribute('opacity', u.opacity);
