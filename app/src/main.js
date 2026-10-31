@@ -725,6 +725,10 @@ const inField = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || 
 
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]')) return;
+  if (!$('v3d').hidden) {
+    if (e.key === 'Escape') $('v3d').hidden = true;
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 'z') {
     if (inField(e.target)) return;
@@ -2089,6 +2093,50 @@ $('btn-vault').onclick = showVault;
 $('btn-panel').onclick = () => togglePanel();
 $('cmd-done').onclick = () => (state.sheetMode ? exportPdf('share') : state.ulMode ? exitUlMode() : finishDraft());
 $('btn-sheet').onclick = () => (state.sheetMode ? exitSheetMode() : startSheetMode());
+
+// ---------- 3D ----------
+
+let viewer = null;
+$('btn-3d').onclick = async () => {
+  if (!live(state.doc).length) return toast('まだ部材がありません');
+  setTool('select');
+  $('v3d').hidden = false;
+  try {
+    const { Viewer3D } = await import('./view3d.js');
+    viewer ??= new Viewer3D($('v3d-host'));
+    await viewer.open(state.doc);
+    setV3dButtons('bird');
+  } catch (err) {
+    $('v3d').hidden = true;
+    toast('3D を開けませんでした：' + err.message);
+  }
+};
+const setV3dButtons = (k) => document.querySelectorAll('[data-v3d]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v3d === k)));
+document.querySelectorAll('[data-v3d]').forEach((b) => {
+  b.onclick = () => {
+    viewer?.view(b.dataset.v3d);
+    setV3dButtons(b.dataset.v3d);
+  };
+});
+$('v3d-close').onclick = () => { $('v3d').hidden = true; };
+$('v3d-save').onclick = async () => {
+  if (!viewer) return;
+  try {
+    const blob = await viewer.snapshot();
+    const name = [state.doc.siteId, state.doc.siteName, '完成予想'].map((s) => String(s || '').trim()).filter(Boolean).join('_').replace(/[\\/:*?"<>|#^[\]]/g, '-') + '.png';
+    const file = new File([blob], name, { type: 'image/png' });
+    // PC で vault のフォルダを選んであればそこへ、無ければ共有シートかダウンロードで。
+    const h = vault.canUseFolder() ? await vault.getFolder() : null;
+    if (h) {
+      await vault.writeToFolder(h, file);
+      return toast(`${name} を Obsidian のフォルダに置きました`);
+    }
+    const r = await vault.shareOrDownload([file], name);
+    if (r !== 'cancelled') toast(r === 'shared' ? '絵を渡しました' : `${name} を書き出しました`);
+  } catch (err) {
+    toast('絵を保存できませんでした：' + err.message);
+  }
+};
 $('cmd-cancel').onclick = () => {
   if (state.sheetMode) return exitSheetMode();
   if (state.ulMode?.type === 'move') {

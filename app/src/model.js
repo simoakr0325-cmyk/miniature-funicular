@@ -13,7 +13,7 @@ export const LAYERS = ['敷地', '建物', '舗装', '植栽', '石', '構造物
 // geom: polygon（面）/ polyline（線）/ circle（中心と半径）/ point / dim（寸法）/ text
 export const KINDS = {
   shikichi: { label: '敷地境界', layer: '敷地', geom: 'polygon', props: {} },
-  tatemono: { label: '建物', layer: '建物', geom: 'polygon', props: { 名前: '' } },
+  tatemono: { label: '建物', layer: '建物', geom: 'polygon', props: { 名前: '', 高さ: 6000 } },
   hoso: {
     label: '舗装', layer: '舗装', geom: 'polygon',
     props: { 材料: '土間コンクリート', 天端: '' },

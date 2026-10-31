@@ -279,8 +279,8 @@ polygon.draft { fill: rgba(194, 87, 26, 0.06); }
     grid-template-rows: var(--bar-h) 1fr auto;
     grid-template-areas: "bar" "stage" "tools";
   }
-  .bar { gap: 4px; padding-inline: 8px; }
-  .bar > button { padding-inline: 8px; }
+  .bar { gap: 2px; padding-inline: 6px; }
+  .bar > button { padding-inline: 6px; }
   .save-state { display: none; }
   .site { max-width: 34vw; }
   .only-narrow { display: inline-flex; }
@@ -371,3 +371,11 @@ a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items
 .lbl.ct-lbl.ex { fill: var(--c-ground); }
 .lbl.ct-lbl.pl { fill: var(--c-plan); }
 .psec h3 { margin: 4px 0 0; font-size: 0.875rem; }
+.v3d { position: fixed; inset: 0; z-index: 30; background: #dfe9ef; display: grid; grid-template-rows: 1fr auto; }
+.v3d[hidden] { display: none; }
+.v3d-host { position: relative; min-height: 0; touch-action: none; }
+.v3d-host canvas { display: block; width: 100%; height: 100%; }
+.v3d-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: calc(100% - 32px); padding: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15); }
+.v3d-hint { position: absolute; bottom: 12px; left: 16px; right: 16px; margin: 0; text-align: center; color: #3f4a44; pointer-events: none; }
+.only-coarse { display: none; }
+@media (pointer: coarse) { .only-coarse { display: inline; } .only-fine { display: none; } }

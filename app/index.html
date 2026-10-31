@@ -29,6 +29,7 @@
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m13 5 4 4-4 4m4-4H8a5 5 0 0 0 0 10h2"/></svg>
     </button>
     <button id="btn-fit" type="button" title="全体を見る（F）">全体</button>
+    <button id="btn-3d" type="button" title="3D で見る（施主向けの絵）">3D</button>
     <button id="btn-sheet" type="button" aria-pressed="false" title="図面（印刷・PDF）">図面</button>
     <button id="btn-vault" class="primary" type="button" title="Obsidian と受け渡す">Obsidian<span class="dot" id="unsynced" hidden></span></button>
     <button id="btn-panel" class="only-narrow" type="button" aria-expanded="false" aria-controls="panel">詳細</button>
@@ -60,6 +61,20 @@
   </main>
   <aside id="panel" class="panel" aria-label="詳細"></aside>
 </div>
+
+<section id="v3d" class="v3d" hidden aria-label="3D で見る">
+  <div id="v3d-host" class="v3d-host"></div>
+  <div class="v3d-bar">
+    <div class="seg" role="group" aria-label="視点">
+      <button type="button" data-v3d="bird" aria-pressed="true">鳥瞰</button>
+      <button type="button" data-v3d="eye" aria-pressed="false">人の目線</button>
+      <button type="button" data-v3d="top" aria-pressed="false">真上</button>
+    </div>
+    <button type="button" id="v3d-save" class="primary">絵を保存</button>
+    <button type="button" id="v3d-close">閉じる</button>
+  </div>
+  <p class="v3d-hint muted small"><span class="only-fine">引いて回す・右ボタンで動かす・ホイールで寄る</span><span class="only-coarse">指で回す・二本指で動かす・つまんで寄る</span></p>
+</section>
 
 <dialog id="dlg-site" class="dlg">
   <form method="dialog" class="dlg-body">
