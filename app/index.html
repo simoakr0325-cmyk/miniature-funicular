@@ -90,7 +90,7 @@
       <p class="muted" id="files-note">ノートのファイルを手で運びます。iPhone では「ファイル」アプリの iCloud Drive › Obsidian › vault の中へ保存し、そこから読み込みます。</p>
       <div class="row">
         <button id="btn-export" type="button">ノートを書き出す</button>
-        <label class="btn">ノートを読み込む<input id="file-import" type="file" accept=".md,text/markdown,text/plain,image/png,image/jpeg" multiple hidden></label>
+        <label class="btn">ノートを読み込む<input id="file-import" type="file" accept=".md,text/markdown,text/plain,image/png,image/jpeg,.dxf" multiple hidden></label>
       </div>
     </section>
     <div class="row end"><button value="close">閉じる</button></div>
@@ -116,7 +116,7 @@
   </form>
 </dialog>
 
-<input id="ul-input" type="file" accept="application/pdf,.pdf,image/*" multiple hidden>
+<input id="ul-input" type="file" accept="application/pdf,.pdf,image/*,.dxf" multiple hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module" src="src/main.js"></script>
 </body>

@@ -2,6 +2,7 @@
 // 置き方：画像の左上の画素が図の (x, y) mm に来て、1 画素が s mm、rot 度（画面で時計回り）回る。
 
 import { dist } from './geometry.js';
+import { decodeDxf, parseDxf, toUnderlayGeometry } from './dxfread.js';
 
 const rad = (d) => (d * Math.PI) / 180;
 const rot = ([x, y], deg) => {
@@ -65,8 +66,12 @@ export const paperScaleOf = (ul) => (ul.paperMmPerPx ? ul.s / ul.paperMmPerPx : 
 
 export const moveBy = (ul, dx, dy) => ({ ...ul, x: ul.x + dx, y: ul.y + dy });
 
+// DXF の下図は、元の DXF をそのまま持ち、開くたびに線にする。
+export const DXF_MIME = 'application/dxf';
+export const isVector = (ul) => ul.mime === DXF_MIME;
+
 export function blobFileName(ul) {
-  const ext = ul.mime === 'image/png' ? 'png' : 'jpg';
+  const ext = ul.mime === 'image/png' ? 'png' : ul.mime === DXF_MIME ? 'dxf' : 'jpg';
   return `下図_${ul.blob}.${ext}`;
 }
 
@@ -169,10 +174,24 @@ async function readPdf(file, pageNo = 1) {
   }
 }
 
+export const isDxf = (file) => /\.dxf$/i.test(file.name) || file.type === DXF_MIME;
+
+// DXF の中身を下図の線にする（端末に置いた DXF を開くたびに使う）。
+export async function dxfGeometry(blob) {
+  const parsed = parseDxf(decodeDxf(new Uint8Array(await blob.arrayBuffer())));
+  return { ...toUnderlayGeometry(parsed), unitMm: parsed.unitMm, ext: parsed.ext, skipped: parsed.skipped };
+}
+
+async function readDxf(file) {
+  const blob = new Blob([await file.arrayBuffer()], { type: DXF_MIME });
+  const geo = await dxfGeometry(blob);
+  return { blob, mime: DXF_MIME, w: geo.w, h: geo.h, paperMmPerPx: null, geo };
+}
+
 export const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 
 // ファイルを読み、画像の中身と大きさを返す。置き方は呼ぶ側で決める。
 export async function readUnderlayFile(file, pageNo = 1) {
-  const out = isPdf(file) ? await readPdf(file, pageNo) : await readImage(file);
+  const out = isDxf(file) ? await readDxf(file) : isPdf(file) ? await readPdf(file, pageNo) : await readImage(file);
   return { ...out, hash: await hashOf(out.blob), name: file.name + (isPdf(file) && pageNo > 1 ? ` (${pageNo}頁)` : '') };
 }

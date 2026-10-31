@@ -271,13 +271,17 @@ export function syncUnderlays(g, uls, v, urls, activeId) {
     keep.add(u.id);
     let node = g.querySelector(`[data-ul="${u.id}"]`);
     const url = urls.get(u.blob);
-    const want = url ? 'image' : 'missing';
+    // url は画像なら文字（blob の URL）、DXF なら { markup } のまとまり
+    const want = !url ? 'missing' : typeof url === 'string' ? 'image' : 'vec';
     if (node && node.dataset.kind !== want) {
       node.remove();
       node = null;
     }
     if (!node) {
-      if (url) {
+      if (want === 'vec') {
+        node = document.createElementNS(NS, 'g');
+        node.innerHTML = url.markup;
+      } else if (url) {
         node = document.createElementNS(NS, 'image');
         node.setAttribute('href', url);
         node.setAttribute('preserveAspectRatio', 'none');
@@ -294,7 +298,9 @@ export function syncUnderlays(g, uls, v, urls, activeId) {
     const k = u.s * v.scale;
     node.setAttribute('transform', `translate(${f(sx)},${f(sy)}) rotate(${u.rot}) scale(${k})`);
     node.classList.toggle('active', u.id === activeId);
-    if (url) {
+    if (want === 'vec') {
+      node.setAttribute('opacity', u.opacity);
+    } else if (url) {
       node.setAttribute('width', u.w);
       node.setAttribute('height', u.h);
       node.setAttribute('opacity', u.opacity);

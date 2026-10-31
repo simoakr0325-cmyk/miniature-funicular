@@ -176,7 +176,7 @@ export async function cleanFolderBlobs(handle) {
   let count = 0, bytes = 0;
   const names = [];
   for await (const [name, entry] of handle.entries()) {
-    if (entry.kind === 'file' && /^下図_[0-9a-f]{16}\.(png|jpg)$/.test(name) && !used.has(name)) names.push([name, entry]);
+    if (entry.kind === 'file' && /^下図_[0-9a-f]{16}\.(png|jpg|dxf)$/.test(name) && !used.has(name)) names.push([name, entry]);
   }
   for (const [name, entry] of names) {
     bytes += (await entry.getFile()).size;

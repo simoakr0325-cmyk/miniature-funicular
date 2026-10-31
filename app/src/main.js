@@ -8,6 +8,7 @@ import {
 import { dist, orthoConstrain, pointAtDistance, rectFromCorners, bbox } from './geometry.js';
 import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from './render.js';
 import * as UL from './underlay.js';
+import { geometryMarkup, snapPointsOf } from './dxfread.js';
 import * as SH from './sheet.js';
 import { plotSheet } from './plot.js';
 import { buildDxf, dxfFileName } from './dxf.js';
@@ -417,7 +418,7 @@ function snapAt(sp, e, exclude) {
     : findSnap(live(state.doc), currentView(), sp, {
         grid: state.doc.settings.grid,
         gridOn: state.doc.settings.gridOn,
-        extra: d ? d.pts : [],
+        extra: d ? [...d.pts, ...underlaySnapPoints()] : underlaySnapPoints(),
         exclude,
       });
   if (e.shiftKey && d && d.pts.length && s.type !== 'vertex') s.p = orthoConstrain(d.pts.at(-1), s.p);
@@ -991,20 +992,47 @@ function openDoc(doc, { fit = true } = {}) {
 
 // ---------- 下図 ----------
 
+// 画像は blob の URL、DXF は線にした中身（{ geo, markup }）を blobUrls に置く。
 async function ensureBlobUrls() {
   let added = false;
   for (const u of liveUnderlays(state.doc)) {
     if (blobUrls.has(u.blob)) continue;
     const blob = await store.getBlob(u.blob).catch(() => null);
-    if (blob) {
-      blobUrls.set(u.blob, URL.createObjectURL(blob));
-      added = true;
-    }
+    if (!blob) continue;
+    if (UL.isVector(u)) {
+      try {
+        blobUrls.set(u.blob, vecEntry(await UL.dxfGeometry(blob)));
+      } catch (err) {
+        toast(`${u.name} を読めません：${err.message}`);
+        continue;
+      }
+    } else blobUrls.set(u.blob, URL.createObjectURL(blob));
+    added = true;
   }
   if (added) {
     render();
     if (!state.sel.length) renderPanel();
   }
+}
+
+const vecEntry = (geo) => ({ geo, markup: geometryMarkup(geo), snaps: snapPointsOf(geo) });
+
+// 吸着に使う DXF の下図の点（図の mm）。置き方が変わったときだけ計算し直す。
+const vecSnapCache = new Map();
+function underlaySnapPoints() {
+  const out = [];
+  for (const u of liveUnderlays(state.doc)) {
+    const e = blobUrls.get(u.blob);
+    if (!u.visible || !e || typeof e === 'string') continue;
+    const key = `${u.x},${u.y},${u.s},${u.rot}`;
+    let c = vecSnapCache.get(u.id);
+    if (!c || c.key !== key) {
+      c = { key, pts: e.snaps.map((p) => UL.pixelToWorld(u, p)) };
+      vecSnapCache.set(u.id, c);
+    }
+    out.push(...c.pts);
+  }
+  return out;
 }
 
 function updateUnderlay(id, fn, opts) {
@@ -1021,7 +1049,9 @@ function updateUnderlay(id, fn, opts) {
 async function addUnderlayFromFile(file) {
   try {
     let page = 1;
-    if (UL.isPdf(file)) {
+    if (UL.isDxf(file)) {
+      toast('DXF を読んでいます…');
+    } else if (UL.isPdf(file)) {
       toast('PDF を読んでいます…');
       const n = await UL.pdfPageCount(file);
       if (n > 1) {
@@ -1034,19 +1064,38 @@ async function addUnderlayFromFile(file) {
     }
     const r = await UL.readUnderlayFile(file, page);
     await store.putBlob(r.hash, r.blob);
-    if (!blobUrls.has(r.hash)) blobUrls.set(r.hash, URL.createObjectURL(r.blob));
+    if (!blobUrls.has(r.hash)) blobUrls.set(r.hash, r.geo ? vecEntry(r.geo) : URL.createObjectURL(r.blob));
     const v = currentView();
-    // PDF は仮に 1/250、写真は画面の幅の八割で敷く。あとで合わせる。
-    const sc = r.paperMmPerPx ? r.paperMmPerPx * 250 : (v.w * 0.8) / view.scale / r.w;
+    // DXF は実寸、PDF は仮に 1/250、写真は画面の幅の八割で敷く。あとで合わせる。
+    const sc = r.geo ? r.geo.unitMm : r.paperMmPerPx ? r.paperMmPerPx * 250 : (v.w * 0.8) / view.scale / r.w;
+    let x = view.cx - (r.w * sc) / 2, y = view.cy - (r.h * sc) / 2;
+    let onSurvey = false;
+    const geo = state.doc.settings.geo;
+    if (r.geo && geo) {
+      // 測量座標（東が x・北が y）で描かれた DXF なら、図の座標に重ねる。図の原点から 1 km 以内に来るときだけ。
+      const k = r.geo.unitMm;
+      const sx = r.geo.ext.x0 * k - geo.origin[1] * 1000, sy = -r.geo.ext.y1 * k + geo.origin[0] * 1000;
+      if (Math.abs(sx) < 1e6 && Math.abs(sy) < 1e6) {
+        [x, y] = [sx, sy];
+        onSurvey = true;
+      }
+    }
     const ul = createUnderlay({
-      name: r.name, blob: r.hash, mime: r.mime, w: r.w, h: r.h, s: sc,
-      x: view.cx - (r.w * sc) / 2, y: view.cy - (r.h * sc) / 2, paperMmPerPx: r.paperMmPerPx,
+      name: r.name, blob: r.hash, mime: r.mime, w: r.w, h: r.h, s: sc, x, y, paperMmPerPx: r.paperMmPerPx,
     });
     const first = live(state.doc).length === 0;
     setTool('select');
     state.sel = [];
     commit(() => state.doc.underlays.push(ul));
     if (first) fitView();
+    const skipped = r.geo ? Object.entries(r.geo.skipped).map(([t, n]) => `${t} ${n}`).join('・') : '';
+    if (r.geo) {
+      toast((onSurvey ? '測量座標の位置に実寸で敷きました' : `実寸（1 単位 = ${r.geo.unitMm} mm）で敷きました。違えば「長さで合わせる」を使ってください`)
+        + (skipped ? `。読めなかったもの：${skipped}` : ''));
+      if (!first) fitView();
+      openPanelOnNarrow();
+      return;
+    }
     toast(r.paperMmPerPx
       ? '縮尺 1/250 で敷きました。違えば右の欄で縮尺を直すか「長さで合わせる」を使ってください'
       : '写真を敷きました。「長さで合わせる」か「2点で合わせる」で大きさを合わせてください');
@@ -1700,6 +1749,11 @@ async function makePdfFile() {
   if (sh.underlays) {
     for (const u of liveUnderlays(state.doc)) {
       if (!u.visible || images.has(u.blob)) continue;
+      const e = blobUrls.get(u.blob);
+      if (e && typeof e !== 'string') {
+        images.set(u.blob, { vec: e.geo });
+        continue;
+      }
       const blob = await store.getBlob(u.blob).catch(() => null);
       if (blob) images.set(u.blob, await jpegOf(blob));
     }

@@ -192,9 +192,36 @@ function drawUnderlays(pg, doc, sheet, L, images) {
     const img = images.get(u.blob);
     if (!u.visible || !img) continue;
     const P = (px) => worldToPaper(sheet, L, pixelToWorld(u, px));
+    if (img.vec) {
+      drawVecUnderlay(pg, img.vec, P, u);
+      continue;
+    }
     const m = pg.imageMatrix(P([0, u.h]), P([u.w, u.h]), P([0, 0]));
     pg.save().alpha(u.opacity, 'Multiply').image(img.bytes, img.w, img.h, m).restore();
   }
+}
+
+// DXF の下図：線のまま、細い灰色で描く。
+function drawVecUnderlay(pg, geo, P, u) {
+  pg.save().alpha(u.opacity).stroke('#6b6f6c').lineWidth(0.13).joins(1, 1);
+  for (const p of geo.paths) pg.path(p.pts.map(P), p.closed);
+  pg.doStroke();
+  for (const c of geo.circles) {
+    const a = P(c.c), b = P([c.c[0] + c.r, c.c[1]]);
+    pg.circle(a, dist(a, b));
+  }
+  pg.doStroke();
+  for (const t of geo.texts) {
+    const a = P(t.p), b = P([t.p[0] + t.h, t.p[1]]);
+    const size = dist(a, b);
+    if (size < 0.8) continue;
+    // 下図の向き（rot、画面で時計回り）も文字の角度に足す。
+    String(t.s).split('\n').forEach((line, i) => {
+      const q = P([t.p[0], t.p[1] + (i * 1.6 + (t.top || 0)) * t.h]);
+      pg.text(line, q, size, { angle: t.rot - u.rot, align: t.align, hex: '#6b6f6c' });
+    });
+  }
+  pg.restore();
 }
 
 function northArrow(pg, [cx, cy], deg) {
