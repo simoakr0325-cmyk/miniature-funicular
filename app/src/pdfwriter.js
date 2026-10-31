@@ -128,8 +128,9 @@ export class Page {
   }
 }
 
-// 頁を PDF のバイト列にする。
-export function buildPdf(page, { title = '', author = '', creator = '縄張り台' } = {}) {
+// 頁（一枚か、何枚かの並び）を PDF のバイト列にする。書体は全頁で一つを使う。
+export function buildPdf(pageOrPages, { title = '', author = '', creator = '縄張り台' } = {}) {
+  const list = Array.isArray(pageOrPages) ? pageOrPages : [pageOrPages];
   const chunks = [];
   const offsets = [];
   let length = 0;
@@ -141,25 +142,28 @@ export function buildPdf(page, { title = '', author = '', creator = '縄張り�
   const objs = [];
   const add = (body) => objs.push(body) && objs.length;
 
-  const W = n(page.W * PT), H = n(page.H * PT);
   const catalog = add(null);
   const pages = add(null);
-  const pageObj = add(null);
-  const contentBytes = enc.encode(page.ops.join('\n'));
-  const content = add({ dict: `<< /Length ${contentBytes.length} >>`, stream: contentBytes });
   const desc = add('<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 4 /FontBBox [-92 -250 1010 922] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 737 /StemV 93 >>');
   const cid = add(`<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor ${desc} 0 R /DW 1000 /W [231 389 500] >>`);
   const font = add(`<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5-UniJIS-UCS2-HW-H /Encoding /UniJIS-UCS2-HW-H /DescendantFonts [${cid} 0 R] >>`);
-  const xobjs = page.images.map((im) => `/${im.name} ${add({
-    dict: `<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>`,
-    stream: im.bytes,
-  })} 0 R`);
-  const gs = [...page.gstates.values()].map((g) => `/${g.name} ${add(`<< /Type /ExtGState /ca ${n(g.a)} /CA ${n(g.a)} /BM /${g.blend} >>`)} 0 R`);
+  const kids = list.map((page) => {
+    const W = n(page.W * PT), H = n(page.H * PT);
+    const pageObj = add(null);
+    const contentBytes = enc.encode(page.ops.join('\n'));
+    const content = add({ dict: `<< /Length ${contentBytes.length} >>`, stream: contentBytes });
+    const xobjs = page.images.map((im) => `/${im.name} ${add({
+      dict: `<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>`,
+      stream: im.bytes,
+    })} 0 R`);
+    const gs = [...page.gstates.values()].map((g) => `/${g.name} ${add(`<< /Type /ExtGState /ca ${n(g.a)} /CA ${n(g.a)} /BM /${g.blend} >>`)} 0 R`);
+    objs[pageObj - 1] = `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${W} ${H}] /Contents ${content} 0 R /Resources << /Font << /F1 ${font} 0 R >> /XObject << ${xobjs.join(' ')} >> /ExtGState << ${gs.join(' ')} >> >> >>`;
+    return pageObj;
+  });
   const info = add(`<< /Title ${hexUtf16(title)} /Author ${hexUtf16(author)} /Creator ${hexUtf16(creator)} /CreationDate (D:${pdfDate(new Date())}) >>`);
 
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pages} 0 R >>`;
-  objs[pages - 1] = `<< /Type /Pages /Kids [${pageObj} 0 R] /Count 1 >>`;
-  objs[pageObj - 1] = `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${W} ${H}] /Contents ${content} 0 R /Resources << /Font << /F1 ${font} 0 R >> /XObject << ${xobjs.join(' ')} >> /ExtGState << ${gs.join(' ')} >> >> >>`;
+  objs[pages - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;
 
   push('%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n'); // 二行目は「バイナリを含む」印（128 以上のバイトなら何でもよい）
   objs.forEach((o, i) => {

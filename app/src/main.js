@@ -10,7 +10,7 @@ import { makeView, renderScene, renderOverlay, handlesOf, syncUnderlays } from '
 import * as UL from './underlay.js';
 import { geometryMarkup, snapPointsOf } from './dxfread.js';
 import * as SH from './sheet.js';
-import { plotSheet } from './plot.js';
+import { plotSheet, plotSheets } from './plot.js';
 import { buildDxf, dxfFileName } from './dxf.js';
 import * as SV from './survey.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
@@ -95,7 +95,15 @@ function sheetOverlay(v) {
   const pts = (ps) => ps.map((p) => v.toS(p).map((n) => Math.round(n * 10) / 10).join(',')).join(' ');
   const f = frame.map((p) => v.toS(p));
   const mask = `M-99999 -99999H99999V99999H-99999Z M${f.map((p) => p.join(' ')).join('L')}Z`;
-  return `<path class="sheet-mask" fill-rule="evenodd" d="${mask}"/>
+  const cur = SH.sheetIndexOf(state.doc);
+  const others = SH.sheetsOf(state.doc).map((_, i) => {
+    if (i === cur) return '';
+    const sh = SH.sheetOf(state.doc, i);
+    const fr = SH.worldRects(sh).frame;
+    const [x, y] = v.toS(fr[0]);
+    return `<polygon class="sheet-other" points="${pts(fr)}"/><text class="lbl sheet-other-no" x="${Math.round(x + 6)}" y="${Math.round(y + 16)}">${i + 1}. ${escapeHtml(sh.title || '図面')}</text>`;
+  }).join('');
+  return `${others}<path class="sheet-mask" fill-rule="evenodd" d="${mask}"/>
     <polygon class="sheet-frame" points="${pts(frame)}"/>
     <polygon class="sheet-title" points="${pts(title)}"/>`;
 }
@@ -448,9 +456,18 @@ svg.addEventListener('pointerdown', (e) => {
   }
   if (e.button !== 0) return;
   if (state.sheetMode) {
+    const w = v.toW(sp);
+    if (!pointInPolygon(w, SH.worldRects(SH.sheetOf(state.doc)).frame)) {
+      // ほかの図面の枠の中を押したら、その図面に切り替える。
+      const j = SH.sheetsOf(state.doc).findIndex((_, i) => pointInPolygon(w, SH.worldRects(SH.sheetOf(state.doc, i)).frame));
+      if (j >= 0) {
+        state.doc.settings.sheetIndex = j;
+        changed();
+      }
+    }
     const { frame } = SH.worldRects(SH.sheetOf(state.doc));
     const sh = SH.sheetOf(state.doc);
-    gesture = pointInPolygon(v.toW(sp), frame)
+    gesture = pointInPolygon(w, frame)
       ? { type: 'sheetmove', start: sp, orig: [sh.cx, sh.cy], moved: false }
       : { type: 'pan', start: sp, view0: { ...view } };
     return;
@@ -1612,17 +1629,50 @@ function contentBox() {
 }
 
 function setSheet(patch, { save = true, panel = false } = {}) {
-  state.doc.settings.sheet = { ...SH.sheetOf(state.doc), ...patch };
+  const s = state.doc.settings;
+  const list = [...SH.sheetsOf(state.doc)];
+  const i = SH.sheetIndexOf(state.doc);
+  list[i] = { ...SH.sheetOf(state.doc), ...patch };
+  s.sheets = list;
+  delete s.sheet;
   if (save) changed({ panel });
   else render();
+}
+
+function pickSheet(i) {
+  state.doc.settings.sheetIndex = i;
+  changed();
+  fitSheet();
+}
+
+// 図面を一枚足す。今見ている所を中心に、細かい縮尺の部分詳細図として。
+function addSheet() {
+  const cur = SH.sheetOf(state.doc);
+  const list = [...SH.sheetsOf(state.doc)];
+  list.push({ ...cur, title: '部分詳細図', number: '', scale: SH.detailScale(cur.scale), cx: Math.round(view.cx), cy: Math.round(view.cy) });
+  state.doc.settings.sheets = list;
+  delete state.doc.settings.sheet;
+  pickSheet(list.length - 1);
+  toast(`図面を足しました（${list.length} 枚目）。枠を引いて範囲を決めてください`);
+}
+
+function removeSheet() {
+  const list = [...SH.sheetsOf(state.doc)];
+  if (list.length < 2) return;
+  const i = SH.sheetIndexOf(state.doc);
+  if (!confirm(`「${list[i].title || '図面'}」（${i + 1} 枚目）を消します。よろしいですか。`)) return;
+  list.splice(i, 1);
+  state.doc.settings.sheets = list;
+  pickSheet(Math.min(i, list.length - 1));
 }
 
 function startSheetMode() {
   setTool('select');
   select(null);
-  if (!state.doc.settings.sheet) {
+  if (!SH.sheetsOf(state.doc).length) {
     const box = contentBox();
-    state.doc.settings.sheet = box ? SH.fitToBox(SH.defaultSheet(), box) : { ...SH.defaultSheet(), cx: view.cx, cy: view.cy };
+    state.doc.settings.sheets = [box ? SH.fitToBox(SH.defaultSheet(), box) : { ...SH.defaultSheet(), cx: view.cx, cy: view.cy }];
+    state.doc.settings.sheetIndex = 0;
   }
   state.sheetMode = true;
   $('btn-sheet').setAttribute('aria-pressed', 'true');
@@ -1666,9 +1716,16 @@ function renderSheetPanel(p) {
   const sh = SH.sheetOf(state.doc);
   const opt = (list, cur, fmt = (x) => x) => list.map((x) => `<option value="${x}"${String(x) === String(cur) ? ' selected' : ''}>${fmt(x)}</option>`).join('');
   const hasFolder = vault.canUseFolder();
+  const sheets = SH.sheetsOf(state.doc);
+  const cur = SH.sheetIndexOf(state.doc);
   p.innerHTML = `
     <section class="psec">
-      <h2>図面</h2>
+      <h2>図面 <small>${cur + 1} / ${sheets.length} 枚目</small></h2>
+      <div class="row sheet-pick">
+        <select id="sh-pick" aria-label="図面を選ぶ">${sheets.map((s, i) => { const x = SH.sheetOf(state.doc, i); return `<option value="${i}"${i === cur ? ' selected' : ''}>${i + 1}. ${escapeHtml(x.title || '図面')}（${x.paper} 1/${x.scale}）</option>`; }).join('')}</select>
+        <button type="button" id="sh-add">足す</button>
+        ${sheets.length > 1 ? '<button type="button" id="sh-del" class="danger">消す</button>' : ''}
+      </div>
       <form id="sheet-form" class="fields" onsubmit="return false">
         <label class="field"><span>用紙</span><select data-k="paper">${opt(Object.keys(SH.PAPERS), sh.paper)}</select></label>
         <label class="field"><span>向き</span><select data-k="orient">${opt(['landscape', 'portrait'], sh.orient, (x) => (x === 'landscape' ? '横' : '縦'))}</select></label>
@@ -1684,7 +1741,8 @@ function renderSheetPanel(p) {
     </section>
     <section class="psec">
       <h2>書き出す</h2>
-      <button type="button" id="sh-pdf" class="primary wide">PDF を書き出す</button>
+      <button type="button" id="sh-pdf" class="primary wide">PDF を書き出す${sheets.length > 1 ? '（この一枚）' : ''}</button>
+      ${sheets.length > 1 ? `<button type="button" id="sh-pdf-all" class="wide">全部（${sheets.length} 枚）を一つの PDF に</button>` : ''}
       ${hasFolder ? '<button type="button" id="sh-open" class="wide">開いて印刷する</button><button type="button" id="sh-folder" class="wide">Obsidian のフォルダに置く</button>' : ''}
       <p class="muted small">印刷するときは倍率を「実際のサイズ（100%）」にしてください。「用紙に合わせる」にすると縮尺がずれます。iPhone では共有シートから「プリント」か「ファイルに保存」を選べます。</p>
       ${state.doc.settings.geo ? `<label class="check"><input type="checkbox" id="sh-dxf-survey" ${sh.dxfSurvey !== false ? 'checked' : ''}> DXF を測量座標で書き出す（東が x・北が y、mm）</label>` : ''}
@@ -1713,6 +1771,10 @@ function renderSheetPanel(p) {
     fitSheet();
   };
   $('sh-pdf').onclick = () => exportPdf('share');
+  if ($('sh-pdf-all')) $('sh-pdf-all').onclick = () => exportPdf('share', { all: true });
+  $('sh-pick').onchange = (ev) => pickSheet(Number(ev.target.value));
+  $('sh-add').onclick = addSheet;
+  if ($('sh-del')) $('sh-del').onclick = removeSheet;
   $('sh-dxf').onclick = () => exportDxf('share');
   if ($('sh-dxf-survey')) $('sh-dxf-survey').onchange = (ev) => setSheet({ dxfSurvey: ev.target.checked });
   if ($('sh-dxf-folder')) $('sh-dxf-folder').onclick = () => exportDxf('folder');
@@ -1743,10 +1805,11 @@ async function jpegOf(blob) {
   return { bytes: new Uint8Array(await jpg.arrayBuffer()), w, h };
 }
 
-async function makePdfFile() {
+async function makePdfFile({ all = false } = {}) {
   const sh = SH.sheetOf(state.doc);
+  const sheets = all ? SH.sheetsOf(state.doc).map((_, i) => SH.sheetOf(state.doc, i)) : [sh];
   const images = new Map();
-  if (sh.underlays) {
+  if (sheets.some((s) => s.underlays)) {
     for (const u of liveUnderlays(state.doc)) {
       if (!u.visible || images.has(u.blob)) continue;
       const e = blobUrls.get(u.blob);
@@ -1758,16 +1821,17 @@ async function makePdfFile() {
       if (blob) images.set(u.blob, await jpegOf(blob));
     }
   }
+  if (all) return new File([plotSheets(state.doc, sheets, { images })], SH.pdfSetFileName(state.doc), { type: 'application/pdf' });
   const bytes = plotSheet(state.doc, sh, { images });
   return new File([bytes], SH.pdfFileName(state.doc, sh), { type: 'application/pdf' });
 }
 
-async function exportPdf(how) {
+async function exportPdf(how, opts = {}) {
   // 新しいタブは押した直後に開かないと止められるので、先に開いておく。
   const win = how === 'open' ? window.open('', '_blank') : null;
   try {
     toast('PDF を作っています…');
-    const file = await makePdfFile();
+    const file = await makePdfFile(opts);
     if (how === 'open') {
       const url = URL.createObjectURL(file);
       if (win) win.location.href = url;

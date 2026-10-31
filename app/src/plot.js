@@ -283,11 +283,20 @@ function fitText(s, size, maxW) {
   return chars.join('') + '…';
 }
 
-// images: Map(blob の指紋 → { bytes: JPEG の Uint8Array, w, h })
-export function plotSheet(doc, sheet, { images = new Map(), date = new Date() } = {}) {
-  const pg = new Page(layout(sheet).W, layout(sheet).H);
-  drawSheet(pg, doc, sheet, images, date);
-  return buildPdf(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}`, author: sheet.company || '' });
+// images: Map(blob の指紋 → { bytes: JPEG の Uint8Array, w, h } か { vec: DXF の線 })
+export function plotSheet(doc, sheet, opts = {}) {
+  return plotSheets(doc, [sheet], { ...opts, title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}` });
+}
+
+// 何枚かの図面を一つの PDF にする（一枚が一頁）。
+export function plotSheets(doc, sheets, { images = new Map(), date = new Date(), title = `${doc.siteName || doc.siteId || '無題'} 図面` } = {}) {
+  const pages = sheets.map((sheet) => {
+    const L = layout(sheet);
+    const pg = new Page(L.W, L.H);
+    drawSheet(pg, doc, sheet, images, date);
+    return pg;
+  });
+  return buildPdf(pages, { title, author: sheets[0]?.company || '' });
 }
 
 // ノートに添える絵（SVG）。図面の設定の用紙で、部材が全部入る縮尺を選ぶ。下図は描かない。部材が無ければ null。

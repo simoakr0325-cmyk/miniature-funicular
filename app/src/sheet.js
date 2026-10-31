@@ -19,7 +19,17 @@ export function defaultSheet() {
   };
 }
 
-export const sheetOf = (doc) => ({ ...defaultSheet(), ...(doc.settings.sheet || {}) });
+// 図面は一つの図に何枚でも持てる（全体の平面図と部分詳細図など）。
+// 古い図は settings.sheet に一枚だけ持っていたので、それも一枚目として読む。
+export const sheetsOf = (doc) => (doc.settings.sheets?.length ? doc.settings.sheets : doc.settings.sheet ? [doc.settings.sheet] : []);
+export const sheetIndexOf = (doc) => Math.min(Math.max(doc.settings.sheetIndex || 0, 0), Math.max(sheetsOf(doc).length - 1, 0));
+export const sheetOf = (doc, i = sheetIndexOf(doc)) => ({ ...defaultSheet(), ...(sheetsOf(doc)[i] || {}) });
+
+// 部分詳細図の縮尺：今の縮尺より一段か二段細かいもの。
+export function detailScale(scale) {
+  const i = SCALES.indexOf(scale);
+  return i > 0 ? SCALES[Math.max(i - 2, 0)] : SCALES[0];
+}
 
 export function layout(sheet) {
   let [W, H] = PAPERS[sheet.paper] || PAPERS.A3;
@@ -64,6 +74,11 @@ export function fitToBox(sheet, box) {
 export function scaleBarLength(scale) {
   const steps = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
   return steps.find((m) => m / scale >= 40) || steps.at(-1);
+}
+
+export function pdfSetFileName(doc) {
+  const parts = [doc.siteId, doc.siteName, '図面一式'].map((s) => String(s || '').trim()).filter(Boolean);
+  return parts.join('_').replace(/[\\/:*?"<>|#^[\]]/g, '-') + '.pdf';
 }
 
 export function pdfFileName(doc, sheet) {

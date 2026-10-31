@@ -81,3 +81,24 @@ test('図を図面にする：部材が紙の上の正しい位置に来る', ()
   // 縮尺 1/100
   assert.ok(pdf.includes('<0031002f003100300030>'));
 });
+
+test('図面は何枚でも持て、古い一枚だけの図も一枚目として読む', async () => {
+  const { sheetsOf, sheetOf, sheetIndexOf, detailScale } = await import('../app/src/sheet.js');
+  const { plotSheets } = await import('../app/src/plot.js');
+  const { createDoc, createElement } = await import('../app/src/model.js');
+  const d = createDoc();
+  assert.equal(sheetsOf(d).length, 0);
+  d.settings.sheet = { scale: 200, title: '古い' };
+  assert.equal(sheetsOf(d).length, 1);
+  assert.equal(sheetOf(d).scale, 200);
+  d.settings.sheets = [{ title: 'A' }, { title: 'B', scale: 30 }];
+  d.settings.sheetIndex = 5;
+  assert.equal(sheetIndexOf(d), 1);
+  assert.equal(sheetOf(d).title, 'B');
+  assert.equal(sheetOf(d, 0).scale, 100);
+  assert.equal(detailScale(100), 30);
+  d.elements.push(createElement('hoso', [[0, 0], [1000, 0], [1000, 1000]]));
+  const pdf = new TextDecoder('latin1').decode(plotSheets(d, [sheetOf(d, 0), sheetOf(d, 1)]));
+  assert.match(pdf, /\/Type \/Pages \/Kids \[\d+ 0 R \d+ 0 R\] \/Count 2/);
+  assert.equal((pdf.match(/\/Type \/Page /g) || []).length, 2);
+});
