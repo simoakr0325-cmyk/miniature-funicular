@@ -27,6 +27,8 @@
   --c-wall: #3a3f3b;
   --c-curb: #6c716d;
   --c-note: #2c4a6b;
+  --c-ground: #8a5a2b;
+  --c-plan: #a8432f;
   --gothic: "Yu Gothic UI", "Yu Gothic", "YuGothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", system-ui, sans-serif;
   --bar-h: 52px;
 }
@@ -59,6 +61,8 @@
     --c-wall: #cfd6d1;
     --c-curb: #9aa39d;
     --c-note: #9dbbe0;
+    --c-ground: #d2a679;
+    --c-plan: #ee8f78;
   }
 }
 :root[data-theme="dark"] {
@@ -67,7 +71,7 @@
   --accent: #8fc4a6; --accent-ink: #10201a; --accent-soft: #24332b; --danger: #e39a82; --grid: #222a26; --grid-major: #2d3832;
   --sel: #f0a061; --c-site: #e6ebe7; --c-bldg: #3a403c; --c-pave: #2f2e29; --c-pave-ink: #a49d8b; --c-plant: #24331f;
   --c-plant-ink: #8dbb7e; --c-tree: rgba(141, 187, 126, 0.2); --c-tree-ink: #9ccc8c; --c-stone: #4a463e; --c-stone-ink: #c9bfa9;
-  --c-wall: #cfd6d1; --c-curb: #9aa39d; --c-note: #9dbbe0;
+  --c-wall: #cfd6d1; --c-curb: #9aa39d; --c-note: #9dbbe0; --c-ground: #d2a679; --c-plan: #ee8f78;
 }
 
 * { box-sizing: border-box; }
@@ -356,3 +360,14 @@ image.ul { mix-blend-mode: multiply; }
 .lbl.sheet-other-no { fill: var(--accent); font-weight: 700; text-anchor: start; }
 .sheet-pick select { flex: 1 1 160px; min-width: 0; }
 a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items: center; }
+.k-takasa.plan .body, .k-takasa.plan .ring { stroke: var(--c-plan); }
+.lbl.spot.plan { fill: var(--c-plan); }
+.contours { pointer-events: none; }
+.ct { fill: none; stroke-width: 0.8; }
+.ct.major { stroke-width: 1.5; }
+.ct.ex { stroke: var(--c-ground); stroke-dasharray: 5 3; }
+.ct.pl { stroke: var(--c-plan); }
+.lbl.ct-lbl { font-size: 10px; text-anchor: middle; paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
+.lbl.ct-lbl.ex { fill: var(--c-ground); }
+.lbl.ct-lbl.pl { fill: var(--c-plan); }
+.psec h3 { margin: 4px 0 0; font-size: 0.875rem; }

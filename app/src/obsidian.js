@@ -4,6 +4,7 @@
 
 import { normalizeDoc, quantities, formatQty, live, liveUnderlays } from './model.js';
 import { blobFileName } from './underlay.js';
+import { earthworkOf } from './terrain.js';
 
 const BLOCK_OPEN = '```nawabari';
 const yamlStr = (s) => JSON.stringify(String(s ?? ''));
@@ -44,6 +45,14 @@ export function toNote(doc, { figure = null } = {}) {
     for (const r of rows) lines.push(`| ${r.label} | ${formatQty(r)} | ${r.unit} |`);
   } else {
     lines.push('（まだ部材がありません）');
+  }
+  const ews = live(doc).filter((e) => e.kind === 'shikichi').map((e) => earthworkOf(doc, e)).filter(Boolean);
+  if (ews.length) {
+    lines.push('', '## 土量', '', '| 項目 | 数量 | 単位 |', '| --- | ---: | --- |');
+    ews.forEach((ew, i) => {
+      const pre = ews.length > 1 ? `敷地 ${i + 1}　` : '';
+      lines.push(`| ${pre}切土 | ${ew.cut.toFixed(2)} | m³ |`, `| ${pre}盛土 | ${ew.fill.toFixed(2)} | m³ |`, `| ${pre}差引（盛 − 切） | ${ew.net.toFixed(2)} | m³ |`);
+    });
   }
   if (figure) lines.push('', '## 図', '', `![[${figure}]]`);
   const uls = liveUnderlays(doc);

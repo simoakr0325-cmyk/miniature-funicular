@@ -5,6 +5,7 @@
 import { KINDS, live, sortedForDraw, measure } from './model.js';
 import { centroid, densify, dist } from './geometry.js';
 import { encodeSjis } from './sjis.js';
+import { contoursOf, fmtH, labelSpot } from './terrain.js';
 
 // 部材の種類ごとの画層と色（AutoCAD の色番号）。
 const LAYER_OF = {
@@ -21,6 +22,7 @@ const LAYER_OF = {
   moji: ['文字', 7],
 };
 const LABEL_LAYER = ['注記', 2];
+const CONTOUR_LAYERS = { existing: ['等高線（現況）', 32, 'DASHED'], planned: ['等高線（計画）', 1] };
 
 const num = (v) => {
   const r = Math.round(v * 1000) / 1000;
@@ -55,13 +57,14 @@ export function buildDxf(doc, { textHeight = 250, offset = [0, 0] } = {}) {
   w.g(0, 'ENDSEC');
 
   w.g(0, 'SECTION').g(2, 'TABLES');
-  w.g(0, 'TABLE').g(2, 'LTYPE').g(70, 2);
+  w.g(0, 'TABLE').g(2, 'LTYPE').g(70, 3);
   w.g(0, 'LTYPE').g(2, 'CONTINUOUS').g(70, 0).g(3, 'Solid line').g(72, 65).g(73, 0).g(40, 0);
   // 一点鎖線（敷地境界）。図の mm で 1200 の線・300 の間・点・300 の間。
   w.g(0, 'LTYPE').g(2, 'DASHDOT').g(70, 0).g(3, '__ . __ . __').g(72, 65).g(73, 4).g(40, 1800)
     .g(49, 1200).g(49, -300).g(49, 0).g(49, -300);
+  w.g(0, 'LTYPE').g(2, 'DASHED').g(70, 0).g(3, '__ __ __').g(72, 65).g(73, 2).g(40, 900).g(49, 600).g(49, -300);
   w.g(0, 'ENDTAB');
-  const layers = [...new Map([...Object.values(LAYER_OF), LABEL_LAYER].map((l) => [l[0], l])).values()];
+  const layers = [...new Map([...Object.values(LAYER_OF), LABEL_LAYER, ...Object.values(CONTOUR_LAYERS)].map((l) => [l[0], l])).values()];
   w.g(0, 'TABLE').g(2, 'LAYER').g(70, layers.length);
   for (const [name, color, lt] of layers) w.g(0, 'LAYER').g(2, name).g(70, 0).g(62, color).g(6, lt || 'CONTINUOUS');
   w.g(0, 'ENDTAB');
@@ -107,7 +110,7 @@ export function buildDxf(doc, { textHeight = 250, offset = [0, 0] } = {}) {
       line(layer, [x - c, y], [x + c, y]);
       line(layer, [x, y - c], [x, y + c]);
       const h = Number(el.props.高さ) || 0;
-      text(layer, (h >= 0 ? '+' : '') + h, [x + c, y - c * 0.4], textHeight);
+      text(layer, (el.props.区分 === '計画' ? 'FH' : 'GL') + (h >= 0 ? '+' : '') + h, [x + c, y - c * 0.4], textHeight);
     } else if (g === 'dim' && el.pts.length >= 2) {
       const [a, b, o] = el.pts;
       const len = dist(a, b) || 1;
@@ -127,6 +130,23 @@ export function buildDxf(doc, { textHeight = 250, offset = [0, 0] } = {}) {
       const mid = [(a2[0] + b2[0]) / 2 - Math.sin(r) * t, (a2[1] + b2[1]) / 2 - Math.cos(r) * t];
       text(layer, String(Math.round(len)), mid, textHeight, { rot, center: true });
     } else if (g === 'text') text(layer, el.props.文字, el.pts[0], textHeight * 1.2);
+  }
+
+  // 等高線（主曲線に高さの文字）
+  const cs = contoursOf(doc);
+  for (const [key, list, pre] of [['existing', cs.existing, 'GL'], ['planned', cs.planned, 'FH']]) {
+    const layer = CONTOUR_LAYERS[key][0];
+    for (const lv of list) {
+      for (const line of lv.lines) {
+        polyline(layer, { pts: line }, false);
+        const s = lv.major && labelSpot(line);
+        if (!s || s.length < textHeight * 8) continue;
+        let rot = (-s.angle * 180) / Math.PI;
+        if (rot > 90) rot -= 180;
+        if (rot <= -90) rot += 180;
+        text(layer, pre + fmtH(lv.h), s.p, textHeight * 0.8, { rot, center: true });
+      }
+    }
   }
 
   // 面積と名前の注記

@@ -1,6 +1,7 @@
 // 図を SVG に描く。毎回、画面座標（px）で組み直す。
 
 import { KINDS, live, sortedForDraw, measure } from './model.js';
+import { contoursOf, labelSpot, fmtH } from './terrain.js';
 import { centroid, dist, densify, arcOf, bulgeAt, segCount } from './geometry.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -131,7 +132,9 @@ export function elementShape(v, el, opts = {}) {
     }
     case 'point': {
       const [x, y] = v.toS(el.pts[0]).map(f);
-      return `<g class="${cls}" ${id}><path class="body" d="M${x - 6} ${y}H${x + 6}M${x} ${y - 6}V${y + 6}"/><circle class="ring" cx="${x}" cy="${y}" r="3"/></g>`;
+      // 計画の高さ点は四角、現況は丸
+      const ring = el.props.区分 === '計画' ? `<rect class="ring" x="${x - 3.5}" y="${y - 3.5}" width="7" height="7"/>` : `<circle class="ring" cx="${x}" cy="${y}" r="3"/>`;
+      return `<g class="${cls}${el.props.区分 === '計画' ? ' plan' : ''}" ${id}><path class="body" d="M${x - 6} ${y}H${x + 6}M${x} ${y - 6}V${y + 6}"/>${ring}</g>`;
     }
     case 'dim':
       return dimShape(v, el, cls);
@@ -160,7 +163,8 @@ function elementLabel(v, el) {
   if (el.kind === 'takasa') {
     const [x, y] = v.toS(el.pts[0]);
     const h = Number(el.props.高さ) || 0;
-    return label(x + 8, y - 6, (h >= 0 ? '+' : '') + h, 'spot');
+    const plan = el.props.区分 === '計画';
+    return label(x + 8, y - 6, (plan ? 'FH' : 'GL') + (h >= 0 ? '+' : '') + h, plan ? 'spot plan' : 'spot');
   }
   if (el.kind === 'hei' && el.pts.length >= 2) {
     const [a, b] = [v.toS(el.pts[0]), v.toS(el.pts[1])];
@@ -188,8 +192,33 @@ export function renderScene(state, v) {
   if (doc.settings.gridOn) out.push(grid(v, doc.settings.grid));
   const sel = new Set(state.sel);
   out.push('<g class="shapes">', ...els.map((e) => elementShape(v, e, { cls: sel.has(e.id) ? 'sel' : '' })), '</g>');
+  out.push(contourShapes(v, doc));
   out.push('<g class="labels">', ...els.map((e) => elementLabel(v, e)), '</g>');
   out.push(scaleBar(v));
+  return out.join('');
+}
+
+// 等高線。現況は破線、計画は実線。主曲線（5 本ごと）は太くする。高さは長い線に添える。
+function contourShapes(v, doc) {
+  const c = contoursOf(doc);
+  if (!c.existing.length && !c.planned.length) return '';
+  const out = ['<g class="contours">'];
+  for (const [cls, list] of [['ex', c.existing], ['pl', c.planned]]) {
+    for (const lv of list) {
+      const d = lv.lines.map((line) => 'M' + line.map((p) => v.toS(p).map(f).join(' ')).join('L')).join('');
+      out.push(`<path class="ct ${cls}${lv.major ? ' major' : ''}" d="${d}"/>`);
+      for (const line of lv.lines) {
+        const s = labelSpot(line);
+        // 主曲線は短くても、ほかは画面で長い線にだけ高さを添える
+        if (!s || s.length * v.scale < (lv.major ? 80 : 240)) continue;
+        const [x, y] = v.toS(s.p).map(f);
+        let ang = (s.angle * 180) / Math.PI;
+        if (ang > 90 || ang < -90) ang += 180;
+        out.push(`<text class="lbl ct-lbl ${cls}" transform="translate(${x},${y}) rotate(${f(ang)})" y="-3">${(cls === 'pl' ? 'FH' : 'GL') + fmtH(lv.h)}</text>`);
+      }
+    }
+  }
+  out.push('</g>');
   return out.join('');
 }
 

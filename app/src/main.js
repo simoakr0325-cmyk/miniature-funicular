@@ -15,6 +15,7 @@ import { buildDxf, dxfFileName } from './dxf.js';
 import * as SV from './survey.js';
 import * as LL from './latlng.js';
 import * as GSI from './gsimap.js';
+import * as TR from './terrain.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -842,6 +843,10 @@ function renderPanel() {
     if (m.length !== undefined) facts.push(['長さ', fmtLen(m.length)]);
     const shaped = def.geom === 'polygon' || def.geom === 'polyline';
     if (shaped) facts.push(['頂点', `${el.pts.length}`]);
+    if (def.geom === 'polygon') {
+      const ew = TR.earthworkOf(state.doc, el);
+      if (ew) facts.push(['切土', `${ew.cut.toFixed(2)} m³`], ['盛土', `${ew.fill.toFixed(2)} m³`], ...(ew.covered < 0.995 ? [['高さの範囲', `面の ${Math.round(ew.covered * 100)}%`]] : []));
+    }
     const vsel = state.vsel && state.vsel.id === el.id ? state.vsel.i : null;
     p.innerHTML = `
       <section class="psec">
@@ -905,6 +910,7 @@ function renderPanel() {
       <h2>数量</h2>
       ${rows.length ? `<table class="qty"><tbody>${rows.map((r) => `<tr><th>${r.label}</th><td>${formatQty(r)}</td><td>${r.unit}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">部材を描くとここに出ます。</p>'}
     </section>
+    ${terrainPanel()}
     <section class="psec">
       <h2>方眼</h2>
       <div class="row">
@@ -926,6 +932,7 @@ function renderPanel() {
   });
   bindUnderlayPanel(p);
   bindPlacePanel();
+  bindTerrainPanel();
   $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
@@ -1124,6 +1131,49 @@ async function addUnderlayFromFile(file) {
   } catch (err) {
     toast('下図を敷けませんでした：' + err.message);
   }
+}
+
+// ---------- 地形（等高線・土量） ----------
+
+function terrainPanel() {
+  const d = state.doc;
+  const nEx = TR.surfacePoints(d, '現況').length, nPl = TR.surfacePoints(d, '計画').length;
+  if (!nEx && !nPl) {
+    return `<section class="psec"><h2>地形</h2><p class="muted small">高さ点を「現況」（GL）と「計画」（FH）で打つと、等高線と土量が出ます。舗装に天端を入れると、計画の高さにも使います。</p></section>`;
+  }
+  const s = TR.terrainSettings(d);
+  const sites = live(d).filter((e) => e.kind === 'shikichi');
+  const ews = sites.map((el) => TR.earthworkOf(d, el)).filter(Boolean);
+  const ewHtml = ews.length
+    ? `<table class="qty"><tbody>${ews.map((ew, i) => `
+        ${ews.length > 1 ? `<tr><th colspan="3">敷地 ${i + 1}</th></tr>` : ''}
+        <tr><th>切土</th><td>${ew.cut.toFixed(2)}</td><td>m³</td></tr>
+        <tr><th>盛土</th><td>${ew.fill.toFixed(2)}</td><td>m³</td></tr>
+        <tr><th>差引（盛 − 切）</th><td>${ew.net.toFixed(2)}</td><td>m³</td></tr>
+        ${ew.covered < 0.995 ? `<tr><td colspan="3" class="small warn">高さ点の範囲は敷地の ${Math.round(ew.covered * 100)}% です。外は数えていません。</td></tr>` : ''}`).join('')}</tbody></table>`
+    : `<p class="muted small">${!sites.length ? '敷地境界を描くと、敷地の中の土量を出します。' : '現況と計画の両方の高さが要ります（三点以上ずつ）。'}面を選ぶと、その面の中の土量も出ます。</p>`;
+  return `<section class="psec">
+    <h2>地形<small>現況 ${nEx} 点・計画 ${nPl} 点</small></h2>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="tr-ex" ${s.existing ? 'checked' : ''}> 現況の等高線</label>
+      <label class="check"><input type="checkbox" id="tr-pl" ${s.planned ? 'checked' : ''}> 計画の等高線</label>
+    </div>
+    <label class="field"><span>間隔</span><select id="tr-int">${[20, 50, 100, 200, 250, 500, 1000].map((g) => `<option value="${g}"${g === s.interval ? ' selected' : ''}>${g} mm</option>`).join('')}</select></label>
+    <h3 class="small">土量（敷地境界の中）</h3>
+    ${ewHtml}
+    <p class="muted small">現況は破線、計画は実線。5 本ごとに太くし、長い線には高さを添えます。土量は計画 − 現況を格子で足し合わせた値です。</p>
+  </section>`;
+}
+
+function bindTerrainPanel() {
+  if (!$('tr-int')) return;
+  const set = (patch) => {
+    state.doc.settings.terrain = { ...TR.terrainSettings(state.doc), ...patch };
+    changed({ panel: false });
+  };
+  $('tr-ex').onchange = (ev) => set({ existing: ev.target.checked });
+  $('tr-pl').onchange = (ev) => set({ planned: ev.target.checked });
+  $('tr-int').onchange = (ev) => set({ interval: Number(ev.target.value) });
 }
 
 // ---------- 場所（緯度経度・地理院地図） ----------

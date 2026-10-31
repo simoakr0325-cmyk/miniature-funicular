@@ -24,7 +24,7 @@ export const KINDS = {
   enseki: { label: '縁石・見切', layer: '構造物', geom: 'polyline', props: { 種類: '' } },
   hei: { label: '塀・擁壁', layer: '構造物', geom: 'polyline', props: { 種類: 'ブロック塀', 高さ: 1200 } },
   jumoku: { label: '樹木', layer: '植栽', geom: 'circle', props: { 樹種: '', 樹高: 2500 } },
-  takasa: { label: '高さ点', layer: '注記', geom: 'point', props: { 高さ: 0 } },
+  takasa: { label: '高さ点', layer: '注記', geom: 'point', props: { 区分: '現況', 高さ: 0 }, choices: { 区分: ['現況', '計画'] } },
   sunpo: { label: '寸法', layer: '注記', geom: 'dim', props: {} },
   moji: { label: '文字', layer: '注記', geom: 'text', props: { 文字: '文字' } },
 };

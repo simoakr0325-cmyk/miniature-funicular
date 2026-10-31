@@ -6,6 +6,7 @@ import { layout, worldToPaper, scaleBarLength, fitToBox, sheetOf } from './sheet
 import { pixelToWorld } from './underlay.js';
 import { Page, buildPdf } from './pdfwriter.js';
 import { SvgPage, buildSvg } from './svgwriter.js';
+import { contoursOf, labelSpot, fmtH } from './terrain.js';
 
 const C = {
   ink: '#1c211e',
@@ -22,6 +23,8 @@ const C = {
   wall: '#3a3f3b',
   curb: '#6c716d',
   note: '#2c4a6b',
+  ground: '#8a5a2b',
+  plan: '#a8432f',
   white: '#ffffff',
 };
 
@@ -116,7 +119,10 @@ function drawElement(pg, el, P, sheet) {
     }
     case 'takasa': {
       const [x, y] = pts[0];
-      pg.save().stroke(C.note).lineWidth(0.15).moveTo([x - 1.2, y]).lineTo([x + 1.2, y]).moveTo([x, y - 1.2]).lineTo([x, y + 1.2]).doStroke().restore();
+      const ink = el.props.区分 === '計画' ? C.plan : C.note;
+      pg.save().stroke(ink).lineWidth(0.15).moveTo([x - 1.2, y]).lineTo([x + 1.2, y]).moveTo([x, y - 1.2]).lineTo([x, y + 1.2]).doStroke();
+      if (el.props.区分 === '計画') pg.rect(x - 0.5, y - 0.5, 1, 1).doStroke();
+      pg.restore();
       return;
     }
     case 'sunpo':
@@ -159,7 +165,8 @@ function drawLabels(pg, el, P, sheet) {
   } else if (el.kind === 'takasa') {
     const [x, y] = pts[0];
     const h = Number(el.props.高さ) || 0;
-    pg.text((h >= 0 ? '+' : '') + h, [x + 1.4, y - 0.8], TXT, { hex: C.note, halo: C.white });
+    const plan = el.props.区分 === '計画';
+    pg.text((plan ? 'FH' : 'GL') + (h >= 0 ? '+' : '') + h, [x + 1.4, y - 0.8], TXT, { hex: plan ? C.plan : C.note, halo: C.white });
   } else if (el.kind === 'hei' && pts.length >= 2 && dist(pts[0], pts[1]) > 15) {
     const [a, b] = pts;
     pg.text(`${el.props.種類 || ''} H${el.props.高さ}`, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 1.2], TXT * 0.9, { align: 'middle', angle: uprightAngle(a, b), hex: C.muted, halo: C.white });
@@ -198,6 +205,26 @@ function drawUnderlays(pg, doc, sheet, L, images) {
     }
     const m = pg.imageMatrix(P([0, u.h]), P([u.w, u.h]), P([0, 0]));
     pg.save().alpha(u.opacity, 'Multiply').image(img.bytes, img.w, img.h, m).restore();
+  }
+}
+
+// 等高線。現況は破線、計画は実線。主曲線と、紙の上で長い線に高さを添える。
+function drawContours(pg, doc, P) {
+  const c = contoursOf(doc);
+  for (const [list, hex, dash, pre] of [[c.existing, C.ground, [1.2, 0.6], 'GL'], [c.planned, C.plan, [], 'FH']]) {
+    for (const lv of list) {
+      pg.save().stroke(hex).lineWidth(lv.major ? 0.25 : 0.1).joins(1, 1).dash(dash);
+      for (const line of lv.lines) pg.path(line.map(P));
+      pg.doStroke().restore();
+      for (const line of lv.lines) {
+        const s = labelSpot(line.map(P));
+        if (!s || s.length < (lv.major ? 20 : 60)) continue;
+        let ang = (-s.angle * 180) / Math.PI; // 紙は y 下向き、文字の角度は反時計回り
+        if (ang > 90) ang -= 180;
+        if (ang <= -90) ang += 180;
+        pg.text(pre + fmtH(lv.h), s.p, TXT * 0.8, { align: 'middle', angle: ang, hex, halo: C.white });
+      }
+    }
   }
 }
 
@@ -320,6 +347,7 @@ function drawSheet(pg, doc, sheet, images, date) {
   pg.save().rect(f.x, f.y, f.w, f.h).clip();
   drawUnderlays(pg, doc, sheet, L, images);
   for (const el of els) drawElement(pg, el, P, sheet);
+  drawContours(pg, doc, P);
   for (const el of els) drawLabels(pg, el, P, sheet);
   pg.restore();
 
