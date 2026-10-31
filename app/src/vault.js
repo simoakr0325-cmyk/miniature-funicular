@@ -3,7 +3,8 @@
 // iPhone など：ファイルを選んで読み込み、共有シート（「ファイルに保存」）で書き出す。
 
 import { getKV, setKV, getBlob, putBlob } from './storage.js';
-import { toNote, fromNote, noteFileName, isNawabariNote } from './obsidian.js';
+import { toNote, fromNote, noteFileName, isNawabariNote, figureFileName } from './obsidian.js';
+import { figureSvg } from './plot.js';
 import { mergeDocs, liveUnderlays } from './model.js';
 import { blobFileName } from './underlay.js';
 
@@ -57,9 +58,11 @@ export async function syncToFolder(handle, doc) {
     const existing = await handle.getFileHandle(name).catch(() => null);
     if (existing) name = name.replace(/\.md$/, `_${result.id.slice(0, 8)}.md`);
   }
+  const fig = figureFile(result);
+  if (fig) await writeToFolder(handle, fig);
   const fh = await handle.getFileHandle(name, { create: true });
   const w = await fh.createWritable();
-  await w.write(toNote(result));
+  await w.write(toNote(result, { figure: fig?.name }));
   await w.close();
   await pushBlobs(handle, result);
   await pullBlobs(handle, result);
@@ -96,6 +99,7 @@ async function pushBlobs(handle, doc) {
 // 選ばれたファイルからノートを読み、一緒に選ばれた下図の画像を端末に取り込む。
 export async function readNoteFiles(files) {
   const out = [];
+  files = files.filter((f) => !/\.svg$/i.test(f.name)); // 添えた図の絵は読まない
   const images = new Map(files.filter((f) => !/\.md$/i.test(f.name)).map((f) => [f.name, f]));
   for (const f of files.filter((f) => /\.md$/i.test(f.name) || !images.has(f.name))) {
     try {
@@ -115,10 +119,18 @@ export async function readNoteFiles(files) {
   return out;
 }
 
+// ノートに添える図の絵（SVG）。部材が無ければ null。
+export function figureFile(doc) {
+  const svg = figureSvg(doc, { date: new Date(doc.updatedAt || Date.now()) });
+  return svg ? new File([svg], figureFileName(doc), { type: 'image/svg+xml' }) : null;
+}
+
 // 共有シートが使えればそれで、使えなければダウンロードで書き出す。下図の画像も一緒に渡す。
 export async function exportNote(doc) {
   const name = noteFileName(doc);
-  const files = [new File([toNote(doc)], name, { type: 'text/markdown' })];
+  const fig = figureFile(doc);
+  const files = [new File([toNote(doc, { figure: fig?.name })], name, { type: 'text/markdown' })];
+  if (fig) files.push(fig);
   for (const u of liveUnderlays(doc)) {
     const blob = await getBlob(u.blob);
     if (blob) files.push(new File([blob], blobFileName(u), { type: u.mime }));

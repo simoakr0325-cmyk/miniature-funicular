@@ -2,9 +2,10 @@
 
 import { KINDS, live, sortedForDraw, measure, liveUnderlays } from './model.js';
 import { centroid, dist, bbox, polygonArea, densify } from './geometry.js';
-import { layout, worldToPaper, scaleBarLength } from './sheet.js';
+import { layout, worldToPaper, scaleBarLength, fitToBox, sheetOf } from './sheet.js';
 import { pixelToWorld } from './underlay.js';
 import { Page, buildPdf } from './pdfwriter.js';
+import { SvgPage, buildSvg } from './svgwriter.js';
 
 const C = {
   ink: '#1c211e',
@@ -257,8 +258,24 @@ function fitText(s, size, maxW) {
 
 // images: Map(blob の指紋 → { bytes: JPEG の Uint8Array, w, h })
 export function plotSheet(doc, sheet, { images = new Map(), date = new Date() } = {}) {
+  const pg = new Page(layout(sheet).W, layout(sheet).H);
+  drawSheet(pg, doc, sheet, images, date);
+  return buildPdf(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}`, author: sheet.company || '' });
+}
+
+// ノートに添える絵（SVG）。図面の設定の用紙で、部材が全部入る縮尺を選ぶ。下図は描かない。部材が無ければ null。
+export function figureSvg(doc, { date = new Date() } = {}) {
+  const pts = live(doc).flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
+  if (!pts.length) return null;
+  const sheet = fitToBox({ ...sheetOf(doc), underlays: false }, bbox(pts));
   const L = layout(sheet);
-  const pg = new Page(L.W, L.H);
+  const pg = new SvgPage(L.W, L.H);
+  drawSheet(pg, doc, sheet, new Map(), date);
+  return buildSvg(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}` });
+}
+
+function drawSheet(pg, doc, sheet, images, date) {
+  const L = layout(sheet);
   const P = (p) => worldToPaper(sheet, L, p);
   const f = L.frame;
   const hidden = new Set(doc.settings.hiddenLayers || []);
@@ -276,6 +293,4 @@ export function plotSheet(doc, sheet, { images = new Map(), date = new Date() } 
   const p2 = (v) => String(v).padStart(2, '0');
   const dateText = `${date.getFullYear()}.${p2(date.getMonth() + 1)}.${p2(date.getDate())}`;
   titleBlock(pg, doc, sheet, L, dateText);
-
-  return buildPdf(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}`, author: sheet.company || '' });
 }

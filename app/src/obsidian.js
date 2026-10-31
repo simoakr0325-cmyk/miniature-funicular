@@ -14,7 +14,11 @@ export function noteFileName(doc) {
   return base.replace(/[\\/:*?"<>|#^[\]]/g, '-') + '.md';
 }
 
-export function toNote(doc) {
+// ノートに添える図の絵のファイル名。現場名を変えても変わらないよう、図ID から作る。
+export const figureFileName = (doc) => `縄張り図_${String(doc.id).slice(0, 8)}.svg`;
+
+// figure：添える図の絵のファイル名（無ければ載せない）
+export function toNote(doc, { figure = null } = {}) {
   const rows = quantities(doc);
   const lines = [
     '---',
@@ -41,6 +45,7 @@ export function toNote(doc) {
   } else {
     lines.push('（まだ部材がありません）');
   }
+  if (figure) lines.push('', '## 図', '', `![[${figure}]]`);
   const uls = liveUnderlays(doc);
   if (uls.length) {
     lines.push('', '## 下図', '');
