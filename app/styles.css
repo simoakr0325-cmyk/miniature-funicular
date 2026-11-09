@@ -379,3 +379,5 @@ a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items
 .v3d-hint { position: absolute; bottom: 12px; left: 16px; right: 16px; margin: 0; text-align: center; color: #3f4a44; pointer-events: none; }
 .only-coarse { display: none; }
 @media (pointer: coarse) { .only-coarse { display: inline; } .only-fine { display: none; } }
+.sp-info { margin: -4px 0 0; color: var(--muted); }
+.sp-info i { margin-left: 6px; font-style: italic; }

@@ -20,9 +20,10 @@ export class Viewer3D {
     this.host = host;
   }
 
-  async open(doc) {
+  async open(doc, { library = [] } = {}) {
     await load();
     this.doc = doc;
+    this.library = library;
     if (!this.renderer) this.init();
     this.build();
     this.resize();
@@ -99,7 +100,7 @@ export class Viewer3D {
 
     // 地面
     const step = Math.max(200, Math.max(gb.x1 - gb.x0, gb.y1 - gb.y0) / 160);
-    const parts = buildParts(doc);
+    const parts = buildParts(doc, { library: this.library });
     this.groundAt = groundOf(doc);
     this.topZ = Math.max(0, ...parts.map((p) => p.z1 ?? (p.type === 'tree' ? p.z + p.h : 0)));
     root.add(this.groundMesh(groundGrid(doc, gb, step, parts)));
@@ -193,6 +194,16 @@ export class Viewer3D {
     trunk.position.set(0, M(p.crownZ + p.crownR[1] * 0.3) / 2, 0);
     trunk.castShadow = true;
     g.add(trunk);
+    if (p.needle) {
+      // 針葉樹：円すいの樹冠（地面近くから）
+      const hC = M(p.h) * 0.85;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(M(p.r), hC, 10), this.mat(p.color, { flatShading: true }));
+      cone.position.set(0, M(p.h) - hC / 2, 0);
+      cone.castShadow = true;
+      g.add(cone);
+      g.position.set(M(p.c[0]), M(p.z), M(p.c[1]));
+      return g;
+    }
     const geo = new THREE.IcosahedronGeometry(1, 2);
     // 少し揺らして葉の塊らしく
     const pos = geo.attributes.position;

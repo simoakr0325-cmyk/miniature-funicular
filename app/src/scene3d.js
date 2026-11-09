@@ -18,6 +18,8 @@ export const COLORS = {
   curb: '#bdb8ad',
   trunk: '#6b4f3a',
   crown: '#4f7d3a',
+  crownDeciduous: '#6f9a45',
+  crownEvergreen: '#3d6631',
   hoso: {
     土間コンクリート: '#cfccc4',
     洗い出し: '#c2b39a',
@@ -51,7 +53,8 @@ export function groundOf(doc) {
 }
 
 // 部品の一覧。prism：多角形を z0〜z1 に押し出したもの。wall：線に沿った壁。tree：幹と樹冠。
-export function buildParts(doc) {
+// library：樹種ライブラリ（あれば、常落と葉形で樹冠の色と形を変える）
+export function buildParts(doc, { library = [] } = {}) {
   const hidden = new Set(doc.settings.hiddenLayers || []);
   const els = live(doc).filter((e) => !hidden.has(KINDS[e.kind].layer));
   const g = groundOf(doc);
@@ -109,7 +112,10 @@ export function buildParts(doc) {
         const h = Math.max(num(el.props.樹高, 2500), 300);
         const r = Math.max(el.r || 750, 150);
         const cv = Math.min(r * 1.1, h * 0.45); // 樹冠の縦の半径
-        parts.push({ type: 'tree', c, z: g(c), h, r, crownZ: h - cv, crownR: [r, cv], trunkR: Math.min(Math.max(h / 60, 40), 200), color: COLORS.crown, trunk: COLORS.trunk });
+        const sp = library.find((s) => s.和名 === String(el.props.樹種 || '').trim());
+        const needle = sp?.葉形 === '針葉';
+        const color = sp?.常落 === '落葉' ? COLORS.crownDeciduous : sp ? COLORS.crownEvergreen : COLORS.crown;
+        parts.push({ type: 'tree', c, z: g(c), h, r, crownZ: h - cv, crownR: [r, cv], trunkR: Math.min(Math.max(h / 60, 40), 200), color, trunk: COLORS.trunk, needle });
         break;
       }
       case 'shikichi': {

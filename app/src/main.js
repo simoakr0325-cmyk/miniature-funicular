@@ -16,6 +16,8 @@ import * as SV from './survey.js';
 import * as LL from './latlng.js';
 import * as GSI from './gsimap.js';
 import * as TR from './terrain.js';
+import * as SP from './species.js';
+import { makeZip } from './zip.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -841,6 +843,13 @@ function renderPanel() {
     const fields = Object.entries(el.props).map(([k, v]) =>
       field(k, v, { numeric: NUMERIC_PROPS.has(k), choices: def.choices?.[k], unit: NUMERIC_PROPS.has(k) ? 'mm' : '' }));
     if (def.geom === 'circle') fields.push(field('葉張', el.r * 2, { numeric: true, unit: 'mm' }));
+    if (el.kind === 'jumoku') {
+      fields[0] = fields[0].replace('data-prop="樹種"', 'data-prop="樹種" list="species-list" autocomplete="off"');
+      const sp = SP.findSpecies(library, el.props.樹種);
+      fields.push(`<datalist id="species-list">${library.map((s) => `<option value="${escapeHtml(s.和名)}">${escapeHtml([s.区分, s.常落, s.読み].filter(Boolean).join('・'))}</option>`).join('')}</datalist>`);
+      if (sp) fields.push(`<p class="sp-info small">${escapeHtml([sp.科, sp.常落, sp.葉形, sp.区分].filter(Boolean).join('・'))}<i>${escapeHtml(sp.学名)}</i>${sp.規格H || sp.規格W ? `　規格 ${[sp.規格H && 'H' + sp.規格H, sp.規格C && 'C' + sp.規格C, sp.規格W && 'W' + sp.規格W].filter(Boolean).join(' ')}` : ''}</p>`);
+      else if (el.props.樹種) fields.push('<p class="sp-info small muted">樹種ライブラリにない名前です</p>');
+    }
     const facts = [];
     if (m.area !== undefined) facts.push(['面積', `${(m.area / 1e6).toFixed(2)} m²`]);
     if (m.perimeter !== undefined) facts.push(['周長', fmtLen(m.perimeter)]);
@@ -879,13 +888,21 @@ function renderPanel() {
         val = Number(val.replace(/[０-９．－]/g, (c) => (c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))));
         if (!Number.isFinite(val)) return toast('数で入れてください');
       }
+      let applied = false;
       commit(() => {
         if (name === '葉張') {
           el.r = Math.max(round(val / 2), 50);
           state.lastTreeR = el.r;
         } else el.props[name] = val;
+        // 樹種を選んだら、ライブラリの規格（m）を初めの樹高・葉張にする
+        if (name === '樹種') {
+          const sp = SP.findSpecies(library, val);
+          if (sp?.規格H) { el.props.樹高 = Math.round(sp.規格H * 1000); applied = true; }
+          if (sp?.規格W) { el.r = Math.round((sp.規格W * 1000) / 2); state.lastTreeR = el.r; applied = true; }
+        }
         touch(el);
-      }, { panel: false });
+      }, { panel: name === '樹種' });
+      if (applied) toast('樹種の規格を樹高・葉張に入れました');
     });
     $('p-dup').onclick = duplicateSelected;
     $('p-del').onclick = () => { state.vsel = null; deleteSelected(); };
@@ -915,6 +932,7 @@ function renderPanel() {
       ${rows.length ? `<table class="qty"><tbody>${rows.map((r) => `<tr><th>${r.label}</th><td>${formatQty(r)}</td><td>${r.unit}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">部材を描くとここに出ます。</p>'}
     </section>
     ${terrainPanel()}
+    ${speciesPanel()}
     <section class="psec">
       <h2>方眼</h2>
       <div class="row">
@@ -937,6 +955,7 @@ function renderPanel() {
   bindUnderlayPanel(p);
   bindPlacePanel();
   bindTerrainPanel();
+  bindSpeciesPanel();
   $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
@@ -1135,6 +1154,85 @@ async function addUnderlayFromFile(file) {
   } catch (err) {
     toast('下図を敷けませんでした：' + err.message);
   }
+}
+
+// ---------- 樹種ライブラリ ----------
+
+let library = SP.mergeLibrary();
+
+async function loadLibrary() {
+  const fromVault = (await store.getKV('species').catch(() => null)) || [];
+  library = SP.mergeLibrary(fromVault);
+}
+
+function speciesPanel() {
+  const nVault = library.filter((s) => s.from === 'vault').length;
+  return `<section class="psec">
+    <h2>樹種ライブラリ<small>${library.length} 種（vault ${nVault}）</small></h2>
+    <div class="row">
+      <button type="button" id="sp-read">vault の植木ノートを読む</button>
+      <button type="button" id="sp-write">植木ノートを作る</button>
+    </div>
+    <p class="muted small">正本は vault の「10_辞書/植木」のノート（frontmatter に「分類: 植木」）です。「植木ノートを作る」で内蔵の ${SP.BUILTIN.length} 種をノートにします（同じ名前のノートがあれば書き換えません）。規格（H・W・C、m）を埋めて読み直すと、樹木を置いたときの初めの大きさになります。</p>
+    <input id="sp-files" type="file" accept=".md,text/markdown,text/plain" multiple hidden>
+  </section>`;
+}
+
+function bindSpeciesPanel() {
+  if (!$('sp-read')) return;
+  $('sp-read').onclick = async () => {
+    if (!vault.canUseFolder()) return $('sp-files').click();
+    try {
+      const h = await window.showDirectoryPicker({ id: 'nawabari-species', mode: 'read' });
+      const files = [];
+      for await (const [name, entry] of h.entries()) if (entry.kind === 'file' && /\.md$/i.test(name)) files.push(await entry.getFile());
+      await readSpeciesFiles(files);
+    } catch (err) {
+      if (err.name !== 'AbortError') toast('読めませんでした：' + err.message);
+    }
+  };
+  $('sp-files').onchange = async (ev) => {
+    await readSpeciesFiles([...ev.target.files]);
+    ev.target.value = '';
+  };
+  $('sp-write').onclick = writeSpeciesNotes;
+}
+
+async function readSpeciesFiles(files) {
+  const list = [];
+  for (const f of files) {
+    const sp = SP.parseSpeciesNote(await f.text(), f.name);
+    if (sp) list.push(sp);
+  }
+  if (!list.length) return toast('「分類: 植木」のノートが見つかりませんでした');
+  await store.setKV('species', list);
+  await loadLibrary();
+  renderPanel();
+  toast(`植木ノート ${list.length} 件を読みました`);
+}
+
+async function writeSpeciesNotes() {
+  const notes = SP.BUILTIN.map((s) => ({ name: SP.speciesFileName(s), data: SP.toSpeciesNote(s) }));
+  if (vault.canUseFolder()) {
+    try {
+      const h = await window.showDirectoryPicker({ id: 'nawabari-species', mode: 'readwrite' });
+      let made = 0;
+      for (const n of notes) {
+        if (await h.getFileHandle(n.name).catch(() => null)) continue; // 晃さんが直したノートは上書きしない
+        const w = await (await h.getFileHandle(n.name, { create: true })).createWritable();
+        await w.write(n.data);
+        await w.close();
+        made++;
+      }
+      toast(`植木ノートを ${made} 件作りました（あったもの ${notes.length - made} 件はそのまま）`);
+    } catch (err) {
+      if (err.name !== 'AbortError') toast('書けませんでした：' + err.message);
+    }
+    return;
+  }
+  const zip = new File([makeZip(notes.map((n) => ({ ...n, name: '植木/' + n.name })))], '植木ノート.zip', { type: 'application/zip' });
+  const r = await vault.shareOrDownload([zip], zip.name);
+  if (r !== 'cancelled') toast('植木ノートをまとめて書き出しました。展開して vault の 10_辞書 に置いてください');
 }
 
 // ---------- 地形（等高線・土量） ----------
@@ -2104,7 +2202,7 @@ $('btn-3d').onclick = async () => {
   try {
     const { Viewer3D } = await import('./view3d.js');
     viewer ??= new Viewer3D($('v3d-host'));
-    await viewer.open(state.doc);
+    await viewer.open(state.doc, { library });
     setV3dButtons('bird');
   } catch (err) {
     $('v3d').hidden = true;
@@ -2178,6 +2276,7 @@ async function start() {
   } catch (err) {
     toast('前の図を開けませんでした：' + err.message);
   }
+  await loadLibrary().catch(() => {});
   openDoc(doc || createDoc());
   store.requestPersist();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
