@@ -76,6 +76,29 @@
   <p class="v3d-hint muted small"><span class="only-fine">引いて回す・右ボタンで動かす・ホイールで寄る</span><span class="only-coarse">指で回す・二本指で動かす・つまんで寄る</span></p>
 </section>
 
+<dialog id="dlg-est" class="dlg dlg-wide">
+  <form method="dialog" class="dlg-body">
+    <h2>見積書（Excel）</h2>
+    <div class="fields est-opts">
+      <label class="field"><span>宛名</span><input id="est-name" type="text" autocomplete="off"></label>
+      <label class="field"><span>諸経費<small>%</small></span><input id="est-rate" type="text" inputmode="decimal" placeholder="0"></label>
+      <label class="field"><span>お値引き<small>円</small></span><input id="est-disc" type="text" inputmode="numeric" placeholder="0"></label>
+    </div>
+    <div id="est-preview" class="est-preview"></div>
+    <p id="est-tpl" class="muted small"></p>
+    <div class="row">
+      <button id="est-export" type="button" class="primary">Excel を書き出す</button>
+      <label class="btn">雛形を読み込む<input id="est-tpl-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+    </div>
+    <div class="row">
+      <button id="est-koushu-read" type="button">工種ノートを読む</button>
+      <button id="est-koushu-write" type="button">工種ノートを作る</button>
+      <input id="est-koushu-files" type="file" accept=".md,text/markdown,text/plain" multiple hidden>
+    </div>
+    <div class="row end"><button value="close">閉じる</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-site" class="dlg">
   <form method="dialog" class="dlg-body">
     <h2>現場</h2>

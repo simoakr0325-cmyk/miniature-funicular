@@ -55,6 +55,9 @@ function paveHatch(pg, poly, material, scale) {
     case 'インターロッキング': hatch(pg, poly, 0, w(100)); return hatch(pg, poly, 90, w(200));
     case '平板': hatch(pg, poly, 0, w(300)); return hatch(pg, poly, 90, w(300));
     case '砂利': return hatch(pg, poly, 135, 1.0, { width: 0.25, dash: [0.01, 1.1], hex: C.paveInk });
+    case 'タイル': hatch(pg, poly, 0, w(300)); return hatch(pg, poly, 90, w(300));
+    case '防草シート砂利敷': return hatch(pg, poly, 135, 1.0, { width: 0.25, dash: [0.01, 1.1], hex: C.paveInk });
+    case '人工芝':
     case '芝': return hatch(pg, poly, 90, 1.6, { width: 0.12, dash: [0.6, 1.2], hex: C.plantInk });
     case 'ウッドデッキ': return hatch(pg, poly, 0, w(120), { width: 0.12 });
     default: return null;

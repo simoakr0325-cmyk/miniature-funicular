@@ -17,7 +17,7 @@ export const KINDS = {
   hoso: {
     label: '舗装', layer: '舗装', geom: 'polygon',
     props: { 材料: '土間コンクリート', 天端: '' },
-    choices: { 材料: ['土間コンクリート', '洗い出し', 'インターロッキング', '平板', '砂利', '芝', 'ウッドデッキ'] },
+    choices: { 材料: ['土間コンクリート', '洗い出し', 'インターロッキング', '平板', 'タイル', '砂利', '防草シート砂利敷', '芝', '人工芝', 'ウッドデッキ'] },
   },
   shokusaitai: { label: '植栽帯', layer: '植栽', geom: 'polygon', props: { 内容: '' } },
   keiseki: { label: '景石', layer: '石', geom: 'polygon', props: { 石種: '', 天端: '' } },

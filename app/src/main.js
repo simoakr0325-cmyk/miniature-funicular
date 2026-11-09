@@ -18,6 +18,8 @@ import * as GSI from './gsimap.js';
 import * as TR from './terrain.js';
 import * as SP from './species.js';
 import { makeZip } from './zip.js';
+import * as EST from './estimate.js';
+import { fillEstimate, inspectTemplate } from './xlsx.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
 import { hitElement, findSnap, elementsInBox } from './hit.js';
 import * as store from './storage.js';
@@ -930,6 +932,7 @@ function renderPanel() {
     <section class="psec">
       <h2>数量</h2>
       ${rows.length ? `<table class="qty"><tbody>${rows.map((r) => `<tr><th>${r.label}</th><td>${formatQty(r)}</td><td>${r.unit}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">部材を描くとここに出ます。</p>'}
+      ${rows.length ? '<button type="button" id="est-open">見積書（Excel）を作る</button>' : ''}
     </section>
     ${terrainPanel()}
     ${speciesPanel()}
@@ -956,6 +959,7 @@ function renderPanel() {
   bindPlacePanel();
   bindTerrainPanel();
   bindSpeciesPanel();
+  if ($('est-open')) $('est-open').onclick = showEstimate;
   $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
@@ -1234,6 +1238,160 @@ async function writeSpeciesNotes() {
   const r = await vault.shareOrDownload([zip], zip.name);
   if (r !== 'cancelled') toast('植木ノートをまとめて書き出しました。展開して vault の 10_辞書 に置いてください');
 }
+
+// ---------- 見積 ----------
+
+let koushu = EST.mergeKoushu();
+
+async function loadKoushu() {
+  koushu = EST.mergeKoushu((await store.getKV('koushu').catch(() => null)) || []);
+}
+
+const estSettings = () => ({ 宛名: '', 諸経費率: 0, 値引き: 0, ...(state.doc.settings.estimate || {}) });
+const defaultName = () => {
+  const n = String(state.doc.siteName || '').trim();
+  return n ? `${n.replace(/様?邸$/, '')}　様邸` : '';
+};
+const yen = (v) => (v === null || v === undefined ? '' : `¥${Math.round(v).toLocaleString('ja-JP')}`);
+const toNum = (s) => Number(String(s).replace(/[０-９．，]/g, (c) => ({ '．': '.', '，': '' })[c] ?? String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[,¥\s円%％]/g, '')) || 0;
+
+function currentEstimate() {
+  const s = estSettings();
+  return EST.buildEstimate(state.doc, { koushu, species: library, 諸経費率: s.諸経費率 / 100, 値引き: s.値引き });
+}
+
+async function templateBytes() {
+  const t = await store.getKV('estimateTemplate').catch(() => null);
+  if (t?.bytes) return { name: t.name, bytes: new Uint8Array(t.bytes), own: true };
+  const res = await fetch(new URL('../templates/mitsumori.xlsx', import.meta.url));
+  return { name: '同梱の雛形（INVOY の見積書の形）', bytes: new Uint8Array(await res.arrayBuffer()), own: false };
+}
+
+async function showEstimate() {
+  const s = estSettings();
+  $('est-name').value = s.宛名 || defaultName();
+  $('est-rate').value = s.諸経費率 || '';
+  $('est-disc').value = s.値引き || '';
+  renderEstimatePreview();
+  const t = await templateBytes();
+  $('est-tpl').textContent = `雛形：${t.name}${t.own ? '' : '。自分の見積書の Excel を「雛形を読み込む」で読ませると、社名・連絡先の欄もそのまま使います。'}`;
+  if (!$('dlg-est').open) $('dlg-est').showModal();
+}
+
+function renderEstimatePreview() {
+  const est = currentEstimate();
+  const rows = EST.estimateRows(est);
+  const tr = (r) => {
+    if (r.type === 'blank') return '<tr class="blank"><td colspan="4"></td></tr>';
+    const miss = r.type !== 'group' && r.単価 === null && !r.率 && r.金額 === 0;
+    return `<tr class="${r.type}${miss ? ' miss' : ''}"><th>${escapeHtml(r.品目)}</th><td>${r.数量 === null || r.数量 === undefined ? '' : r.単位 === '一式' ? '一式' : `${r.数量}${escapeHtml(r.単位)}`}</td><td>${yen(r.単価)}</td><td>${r.type === 'group' && r.children === 0 && r.金額 === 0 ? '<span class="warn">単価なし</span>' : yen(r.金額)}</td></tr>`;
+  };
+  $('est-preview').innerHTML = `
+    <table class="est"><thead><tr><th>品目</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
+    <tbody>${rows.map(tr).join('')}</tbody>
+    <tfoot><tr><th colspan="3">合計（税抜）</th><td>${yen(est.税抜)}</td></tr>
+    <tr><th colspan="3">${Math.round(est.税率 * 100)}% 税額（切り捨て）</th><td>${yen(est.税)}</td></tr>
+    <tr class="sum"><th colspan="3">見積金額（税込）</th><td>${yen(est.税込)}</td></tr></tfoot></table>
+    ${est.missing.length ? `<p class="warn small">単価が入っていない品目が ${est.missing.length} 件あります（Excel では空欄）：${est.missing.map(escapeHtml).join('、')}</p>` : ''}`;
+}
+
+function saveEstimateSettings() {
+  state.doc.settings.estimate = { 宛名: $('est-name').value.trim(), 諸経費率: toNum($('est-rate').value), 値引き: toNum($('est-disc').value) };
+  changed({ panel: false });
+  renderEstimatePreview();
+}
+for (const id of ['est-name', 'est-rate', 'est-disc']) $(id).addEventListener('change', saveEstimateSettings);
+
+$('est-export').onclick = async () => {
+  saveEstimateSettings();
+  try {
+    const est = currentEstimate();
+    const t = await templateBytes();
+    const r = await fillEstimate(t.bytes, EST.estimateRows(est), est, { 宛名: estSettings().宛名 || defaultName() });
+    const name = [state.doc.siteId, state.doc.siteName, '見積書'].map((x) => String(x || '').trim()).filter(Boolean).join('_').replace(/[\\/:*?"<>|#^[\]]/g, '-') + '.xlsx';
+    const file = new File([r.bytes], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const h = vault.canUseFolder() ? await vault.getFolder() : null;
+    const note = r.added ? `（行を ${r.added} 行足しました）` : '';
+    if (h) {
+      await vault.writeToFolder(h, file);
+      toast(`${name} を Obsidian のフォルダに置きました${note}`);
+    } else {
+      const res = await vault.shareOrDownload([file], name);
+      if (res !== 'cancelled') toast(`${name} を書き出しました${note}`);
+    }
+  } catch (err) {
+    toast('見積書を作れませんでした：' + err.message);
+  }
+};
+
+$('est-tpl-file').onchange = async (ev) => {
+  const f = ev.target.files[0];
+  ev.target.value = '';
+  if (!f) return;
+  try {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const info = await inspectTemplate(bytes);
+    if (!info.ok) return toast('この Excel には「品目」「税額」の欄が見つかりません');
+    await store.setKV('estimateTemplate', { name: f.name, bytes: bytes.buffer });
+    toast(`雛形を読み込みました（品目の行 ${info.rows} 行）`);
+    showEstimate();
+  } catch (err) {
+    toast('雛形を読めませんでした：' + err.message);
+  }
+};
+
+$('est-koushu-read').onclick = async () => {
+  if (!vault.canUseFolder()) return $('est-koushu-files').click();
+  try {
+    const h = await window.showDirectoryPicker({ id: 'nawabari-koushu', mode: 'read' });
+    const files = [];
+    for await (const [name, entry] of h.entries()) if (entry.kind === 'file' && /\.md$/i.test(name)) files.push(await entry.getFile());
+    await readKoushuFiles(files);
+  } catch (err) {
+    if (err.name !== 'AbortError') toast('読めませんでした：' + err.message);
+  }
+};
+$('est-koushu-files').onchange = async (ev) => {
+  await readKoushuFiles([...ev.target.files]);
+  ev.target.value = '';
+};
+
+async function readKoushuFiles(files) {
+  const list = [];
+  for (const f of files) {
+    const k = EST.parseKoushuNote(await f.text(), f.name);
+    if (k) list.push(k);
+  }
+  if (!list.length) return toast('「分類: 工種」のノートが見つかりませんでした');
+  await store.setKV('koushu', list);
+  await loadKoushu();
+  renderEstimatePreview();
+  toast(`工種ノート ${list.length} 件を読みました`);
+}
+
+$('est-koushu-write').onclick = async () => {
+  const notes = EST.BUILTIN_KOUSHU.map((k) => ({ name: EST.koushuFileName(k), data: EST.toKoushuNote(k) }));
+  if (vault.canUseFolder()) {
+    try {
+      const h = await window.showDirectoryPicker({ id: 'nawabari-koushu', mode: 'readwrite' });
+      let made = 0;
+      for (const n of notes) {
+        if (await h.getFileHandle(n.name).catch(() => null)) continue;
+        const w = await (await h.getFileHandle(n.name, { create: true })).createWritable();
+        await w.write(n.data);
+        await w.close();
+        made++;
+      }
+      toast(`工種ノートを ${made} 件作りました（あったもの ${notes.length - made} 件はそのまま）`);
+    } catch (err) {
+      if (err.name !== 'AbortError') toast('書けませんでした：' + err.message);
+    }
+    return;
+  }
+  const zip = new File([makeZip(notes.map((n) => ({ ...n, name: '工種/' + n.name })))], '工種ノート.zip', { type: 'application/zip' });
+  const r = await vault.shareOrDownload([zip], zip.name);
+  if (r !== 'cancelled') toast('工種ノートをまとめて書き出しました。展開して vault の 10_辞書 に置いてください');
+};
 
 // ---------- 地形（等高線・土量） ----------
 
@@ -2277,6 +2435,7 @@ async function start() {
     toast('前の図を開けませんでした：' + err.message);
   }
   await loadLibrary().catch(() => {});
+  await loadKoushu().catch(() => {});
   openDoc(doc || createDoc());
   store.requestPersist();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

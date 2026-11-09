@@ -381,3 +381,16 @@ a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items
 @media (pointer: coarse) { .only-coarse { display: inline; } .only-fine { display: none; } }
 .sp-info { margin: -4px 0 0; color: var(--muted); }
 .sp-info i { margin-left: 6px; font-style: italic; }
+.dlg-wide { width: min(760px, calc(100vw - 32px)); }
+.est-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 16px; }
+.est-preview { max-height: 46vh; overflow: auto; border: 1px solid var(--rule); border-radius: 6px; }
+table.est { width: 100%; border-collapse: collapse; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+table.est th, table.est td { padding: 4px 8px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+table.est th:first-child { text-align: left; white-space: normal; font-weight: 400; }
+table.est thead th { position: sticky; top: 0; background: var(--surface); font-weight: 700; text-align: center; }
+table.est tr.group th:first-child { font-weight: 700; }
+table.est tr.line th:first-child { padding-left: 20px; }
+table.est tr.blank td { height: 4px; padding: 0; border: none; }
+table.est tr.miss td, table.est tr.miss th { color: var(--danger); }
+table.est tfoot th { text-align: right; font-weight: 400; }
+table.est tfoot tr.sum th, table.est tfoot tr.sum td { font-weight: 700; font-size: 0.9375rem; }

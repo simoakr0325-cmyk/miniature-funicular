@@ -14,6 +14,9 @@ export const MATERIAL_PATTERN = {
   平板: 'pat-hira',
   砂利: 'pat-jari',
   芝: 'pat-shiba',
+  人工芝: 'pat-shiba',
+  タイル: 'pat-hira',
+  防草シート砂利敷: 'pat-jari',
   ウッドデッキ: 'pat-deck',
 };
 

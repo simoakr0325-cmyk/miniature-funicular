@@ -19,5 +19,5 @@ for (const k of KUBUN) {
   for (const s of BUILTIN.filter((x) => x.区分 === k)) index.push(`- [[${s.和名}]]　${s.常落}・${s.科}`);
   index.push('');
 }
-writeFileSync(new URL('../植木の一覧.md', dir), index.join('\n'));
+writeFileSync(new URL('植木の一覧.md', dir), index.join('\n'));
 console.log(`${made} 件作りました（全 ${BUILTIN.length} 種）`);
