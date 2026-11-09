@@ -80,7 +80,8 @@ export async function fetchGsi(plan) {
   let got = 0;
   await Promise.all(plan.tiles.map(async (t) => {
     try {
-      const res = await fetch(t.url, { mode: 'cors' });
+      // 初めて取るタイルで、まれに CORS の許可が付かずに返ることがあるので、一度だけ取り直す。
+      const res = await fetch(t.url, { mode: 'cors' }).catch(() => fetch(t.url, { mode: 'cors', cache: 'reload' }));
       if (!res.ok) return;
       const bmp = await createImageBitmap(await res.blob());
       ctx.drawImage(bmp, t.x * 256 - plan.origin[0], t.y * 256 - plan.origin[1]);
