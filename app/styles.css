@@ -394,3 +394,4 @@ table.est tr.blank td { height: 4px; padding: 0; border: none; }
 table.est tr.miss td, table.est tr.miss th { color: var(--danger); }
 table.est tfoot th { text-align: right; font-weight: 400; }
 table.est tfoot tr.sum th, table.est tfoot tr.sum td { font-weight: 700; font-size: 0.9375rem; }
+.psec h2 small.kou { margin-left: auto; }

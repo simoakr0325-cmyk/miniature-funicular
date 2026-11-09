@@ -5,6 +5,7 @@
 import { normalizeDoc, quantities, formatQty, live, liveUnderlays } from './model.js';
 import { blobFileName } from './underlay.js';
 import { earthworkOf } from './terrain.js';
+import { getKou } from './kou.js';
 
 const BLOCK_OPEN = '```nawabari';
 const yamlStr = (s) => JSON.stringify(String(s ?? ''));
@@ -28,6 +29,9 @@ export function toNote(doc, { figure = null } = {}) {
     `現場ID: ${yamlStr(doc.siteId)}`,
     `現場名: ${yamlStr(doc.siteName)}`,
     `更新: ${yamlStr(doc.updatedAt)}`,
+    // 更新した日の七十二候（vault の決まり：kisetu は送り仮名の表示、kou は漢字の名前）
+    `kisetu: ${yamlStr(getKou(new Date(doc.updatedAt)).kisetu)}`,
+    `kou: ${getKou(new Date(doc.updatedAt)).name}`,
     `部材数: ${live(doc).length}`,
     'tags:',
     '  - 縄張り台',

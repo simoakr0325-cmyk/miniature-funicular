@@ -16,6 +16,7 @@ import * as SV from './survey.js';
 import * as LL from './latlng.js';
 import * as GSI from './gsimap.js';
 import * as TR from './terrain.js';
+import { getKou } from './kou.js';
 import * as SP from './species.js';
 import { makeZip } from './zip.js';
 import * as EST from './estimate.js';
@@ -921,7 +922,7 @@ function renderPanel() {
   const hidden = new Set(d.settings.hiddenLayers || []);
   p.innerHTML = `
     <section class="psec">
-      <h2>現場</h2>
+      <h2>現場<small class="kou" title="${escapeHtml(getKou().yomi)}">${escapeHtml(getKou().kisetu)}</small></h2>
       <form id="site-form" class="fields" onsubmit="return false">
         ${field('現場ID', d.siteId)}
         ${field('現場名', d.siteName)}
