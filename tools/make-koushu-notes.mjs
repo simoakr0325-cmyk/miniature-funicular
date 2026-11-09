@@ -1,5 +1,5 @@
 // 内蔵の工種から、vault に置く工種ノートを vault/10_辞書/工種/ に作る（既にあるファイルは書き換えない）。
-// 使い方：node tools/make-koushu-notes.mjs
+// 使い方：node tools/make-koushu-notes.mjs（--force で書き換える）
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { BUILTIN_KOUSHU, toKoushuNote, koushuFileName } from '../app/src/estimate.js';
 
@@ -8,7 +8,7 @@ mkdirSync(dir, { recursive: true });
 let made = 0;
 for (const k of BUILTIN_KOUSHU) {
   const f = new URL(koushuFileName(k), dir);
-  if (existsSync(f)) continue;
+  if (existsSync(f) && !process.argv.includes('--force')) continue;
   writeFileSync(f, toKoushuNote(k));
   made++;
 }

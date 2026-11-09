@@ -298,7 +298,17 @@ export async function fillEstimate(templateBytes, rows, est, { 宛名 = '', 日�
     for (const rr of [r, r + 1]) if (new RegExp(`<mergeCell ref="C${rr}:`).test(sh.xml)) return `C${rr}`;
     return `C${r}`;
   })();
-  if (amountRef) sh.set(amountRef, { formula: `M${totalRowN}+M${taxRowN}`, value: total + tax });
+  // 端数値引き：税込の合計を est.端数 の単位に四捨五入した差。合計(税抜) の下に一行足して見せる。
+  let adjRef = null;
+  const adj = est.端数 > 0 ? Math.floor((total + tax) / est.端数 + 0.5) * est.端数 - (total + tax) : 0;
+  if (est.端数 > 0) {
+    const ar = totalRowN + 1;
+    sh.insertRows(ar, 1, totalRowN);
+    sh.set(`J${ar}`, { value: adj > 0 ? '端数調整' : '端数値引き' });
+    sh.set(`M${ar}`, { formula: `ROUND(M${totalRowN}+M${taxRowN},${-Math.round(Math.log10(est.端数))})-(M${totalRowN}+M${taxRowN})`, value: adj });
+    adjRef = `M${ar}`;
+  }
+  if (amountRef) sh.set(amountRef, { formula: `M${totalRowN}+M${taxRowN}${adjRef ? `+${adjRef}` : ''}`, value: total + tax + adj });
 
   // 宛名と作成日
   const nameRow = sh.findRow('B', (t) => /様/.test(t), 1, head);
@@ -320,7 +330,8 @@ export async function fillEstimate(templateBytes, rows, est, { 宛名 = '', 日�
   files.set('xl/sharedStrings.xml', enc.encode(sst));
   // 開いたときに式を計算し直す。計算の順の控えは古くなるので外す。
   // 印刷範囲も足した行の分だけ下へ
-  const wb1 = wb.replace(/(<definedName[^>]*_xlnm\.Print_Area[^>]*>)([^<]+)(<\/definedName>)/g, (m, a, ref, b) => a + ref.replace(/\$(\d+)/g, (x, n) => (Number(n) > last ? `$${Number(n) + extra}` : x)) + b);
+  const grow = extra + (est.端数 > 0 ? 1 : 0);
+  const wb1 = wb.replace(/(<definedName[^>]*_xlnm\.Print_Area[^>]*>)([^<]+)(<\/definedName>)/g, (m, a, ref, b) => a + ref.replace(/\$(\d+)/g, (x, n) => (Number(n) > last ? `$${Number(n) + grow}` : x)) + b);
   const wb2 = /<calcPr\b[^>]*\/>/.test(wb1) ? wb1.replace(/<calcPr\b([^>]*)\/>/, (m, a) => `<calcPr${a.replace(/\s*fullCalcOnLoad="\w+"/, '')} fullCalcOnLoad="1"/>`) : wb1.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
   files.set('xl/workbook.xml', enc.encode(wb2));
   if (files.has('xl/calcChain.xml')) {
@@ -332,7 +343,7 @@ export async function fillEstimate(templateBytes, rows, est, { 宛名 = '', 日�
   // [Content_Types].xml を先頭に
   const order = ['[Content_Types].xml', ...[...files.keys()].filter((k) => k !== '[Content_Types].xml')];
   const bytes = makeZip(order.map((name) => ({ name, data: files.get(name) })));
-  return { bytes, used: use.length, capacity, added: extra, total, tax };
+  return { bytes, used: use.length, capacity, added: extra, total, tax, adjust: adj, amount: total + tax + adj };
 }
 
 // 雛形から、表の大きさなどを読む（読み込んだときの確かめ用）

@@ -26,8 +26,8 @@ test('元の見積と同じ数量なら、同じ内訳と金額になる（防�
   assert.deepEqual(g.lines.map((l) => [l.数量, l.金額]), [[4.2, 14700], [2.6, 21060], [52, 76960], [1.6, 18720]]);
   assert.equal(g.金額, 131440);
   const t = est.groups.find((x) => x.名前 === 'タイルテラス施工工事');
-  assert.deepEqual(t.lines.map((l) => l.金額), [10530, 0, 20800]);
-  assert.ok(est.missing.includes('タイルテラス施工工事　タイル材料費'));
+  assert.deepEqual(t.lines.map((l) => l.金額), [10530, 24440, 20800]);
+  assert.ok(!est.missing.some((m) => m.startsWith('タイルテラス')));
   assert.ok(est.missing.some((m) => m.startsWith('塀・擁壁　ブロック塀')));
 });
 
@@ -36,11 +36,26 @@ test('樹木は植木ノートの単価で本数を掛ける。税は 10% 切り
   const est = buildEstimate(sample(), { species, 諸経費率: 0.1, 値引き: 1000 });
   const p = est.groups.find((x) => x.名前 === '植栽工事');
   assert.deepEqual(p.lines.map((l) => [l.品目, l.数量, l.金額]), [['ヤマボウシ　H3 W1.2', 2, 36000]]);
-  assert.equal(est.工事計, 131440 + 31330 + 36000);
+  assert.equal(est.工事計, 131440 + 55770 + 36000);
   assert.equal(est.extras[0].金額, Math.round(est.工事計 * 0.1));
   assert.equal(est.税抜, est.工事計 + est.extras[0].金額 - 1000);
   assert.equal(est.税, Math.floor(est.税抜 * 0.1));
   assert.equal(est.税込, est.税抜 + est.税);
+  // 税込の千円未満を四捨五入し、差を端数値引きに
+  assert.equal(est.見積金額 % 1000, 0);
+  assert.equal(est.見積金額 - est.税込, est.端数調整);
+  assert.ok(Math.abs(est.端数調整) <= 500);
+});
+
+test('諸経費は既定で 12%、端数は千円で四捨五入（半分は切り上げ）', async () => {
+  const { roundHalfUp } = await import('../app/src/estimate.js');
+  const est = buildEstimate(sample());
+  assert.equal(est.extras[0].率, 0.12);
+  assert.equal(est.extras[0].金額, Math.round(est.工事計 * 0.12));
+  assert.equal(roundHalfUp(345133, 1000), 345000);
+  assert.equal(roundHalfUp(345500, 1000), 346000);
+  assert.equal(roundHalfUp(345499, 1000), 345000);
+  assert.equal(buildEstimate(sample(), { 端数: 0 }).端数調整, 0);
 });
 
 test('工種ノートを書いて読み戻すと同じ。vault の方が優先', () => {
@@ -50,7 +65,7 @@ test('工種ノートを書いて読み戻すと同じ。vault の方が優先',
   assert.equal(back.kindLabel, '舗装');
   assert.equal(back.sub, '人工芝');
   assert.deepEqual(back.lines.map((l) => [l.品目, l.出し方, l.係数, l.単位, l.単価]), k.lines.map((l) => [l.品目, l.出し方, l.係数, l.単位, l.単価]));
-  const edited = toKoushuNote(k).replace('| 人工芝施工費 | 面積 | 1 | 平米 |  |', '| 人工芝施工費 | 面積 | 1 | 平米 | 3,500 |');
+  const edited = toKoushuNote(k).replace('| 人工芝施工費 | 面積 | 1 | 平米 | 3000 |', '| 人工芝施工費 | 面積 | 1 | 平米 | 3,500 |');
   const merged = mergeKoushu([parseKoushuNote(edited)]);
   assert.equal(merged.find((x) => x.工事名 === '人工芝施工工事').lines[3].単価, 3500);
   assert.equal(roundQty(1.05, '立米'), 1.1);
@@ -77,11 +92,14 @@ test('同梱の雛形に流し込むと、品目・式・合計が入り、行�
   assert.match(sheet, /<f>ROUND\(J13\*K13,0\)<\/f><v>14700<\/v>/);
   const taxRow = 38 + r.added;
   assert.match(sheet, new RegExp(`<c r="M${taxRow}"[^>]*><f>ROUNDDOWN\\(M${taxRow + 1}\\*0.1,0\\)</f><v>${r.tax}</v>`));
-  assert.match(sheet, new RegExp(`<c r="C8"[^>]*><f>M${taxRow + 1}\\+M${taxRow}</f><v>${r.total + r.tax}</v>`));
+  // 合計(税抜) の下に端数値引きの行、見積金額は千円単位
+  assert.match(sheet, new RegExp(`<c r="M${taxRow + 2}"[^>]*><f>ROUND\\(M${taxRow + 1}\\+M${taxRow},-3\\)-\\(M${taxRow + 1}\\+M${taxRow}\\)</f><v>${r.adjust}</v>`));
+  assert.match(sheet, new RegExp(`<c r="C8"[^>]*><f>M${taxRow + 1}\\+M${taxRow}\\+M${taxRow + 2}</f><v>${r.amount}</v>`));
+  assert.equal(r.amount % 1000, 0);
   assert.match(sheet, /春日　様邸/);
   const wb = new TextDecoder().decode(files.get('xl/workbook.xml'));
   assert.match(wb, /fullCalcOnLoad="1"/);
-  assert.match(wb, new RegExp(`\\$P\\$${43 + r.added}`));
+  assert.match(wb, new RegExp(`\\$P\\$${43 + r.added + 1}`));
   const styles = new TextDecoder().decode(files.get('xl/styles.xml'));
   assert.match(styles, /formatCode="General&quot;立米&quot;"/);
 });

@@ -1247,7 +1247,7 @@ async function loadKoushu() {
   koushu = EST.mergeKoushu((await store.getKV('koushu').catch(() => null)) || []);
 }
 
-const estSettings = () => ({ 宛名: '', 諸経費率: 0, 値引き: 0, ...(state.doc.settings.estimate || {}) });
+const estSettings = () => ({ 宛名: '', 諸経費率: 12, 値引き: 0, ...(state.doc.settings.estimate || {}) });
 const defaultName = () => {
   const n = String(state.doc.siteName || '').trim();
   return n ? `${n.replace(/様?邸$/, '')}　様邸` : '';
@@ -1270,7 +1270,7 @@ async function templateBytes() {
 async function showEstimate() {
   const s = estSettings();
   $('est-name').value = s.宛名 || defaultName();
-  $('est-rate').value = s.諸経費率 || '';
+  $('est-rate').value = s.諸経費率 ?? 12;
   $('est-disc').value = s.値引き || '';
   renderEstimatePreview();
   const t = await templateBytes();
@@ -1291,7 +1291,8 @@ function renderEstimatePreview() {
     <tbody>${rows.map(tr).join('')}</tbody>
     <tfoot><tr><th colspan="3">合計（税抜）</th><td>${yen(est.税抜)}</td></tr>
     <tr><th colspan="3">${Math.round(est.税率 * 100)}% 税額（切り捨て）</th><td>${yen(est.税)}</td></tr>
-    <tr class="sum"><th colspan="3">見積金額（税込）</th><td>${yen(est.税込)}</td></tr></tfoot></table>
+    ${est.端数調整 ? `<tr><th colspan="3">${est.端数調整 < 0 ? '端数値引き' : '端数調整'}（税込の千円未満を四捨五入）</th><td>${yen(est.端数調整)}</td></tr>` : ''}
+    <tr class="sum"><th colspan="3">見積金額（税込）</th><td>${yen(est.見積金額)}</td></tr></tfoot></table>
     ${est.missing.length ? `<p class="warn small">単価が入っていない品目が ${est.missing.length} 件あります（Excel では空欄）：${est.missing.map(escapeHtml).join('、')}</p>` : ''}`;
 }
 
