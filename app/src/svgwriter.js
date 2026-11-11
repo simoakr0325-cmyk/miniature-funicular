@@ -5,6 +5,7 @@
 const n = (v) => (Math.round(v * 1000) / 1000).toString();
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
+const MINCHO = "'Hiragino Mincho ProN','Yu Mincho','YuMincho','Noto Serif JP',serif";
 const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic','Meiryo','Noto Sans JP',sans-serif";
 
 export class SvgPage {
@@ -96,12 +97,13 @@ export class SvgPage {
     return this;
   }
 
-  text(s, [x, y], sizeMm, { angle = 0, align = 'start', hex = '#000000', halo = null } = {}) {
+  text(s, [x, y], sizeMm, { angle = 0, align = 'start', hex = '#000000', halo = null, mincho = false } = {}) {
     if (s === '' || s == null) return this;
     const anchor = align === 'middle' ? ' text-anchor="middle"' : align === 'end' ? ' text-anchor="end"' : '';
     const rot = angle ? ` transform="rotate(${n(-angle)} ${n(x)} ${n(y)})"` : '';
     const h = halo ? ` stroke="${halo}" stroke-width="${n(sizeMm * 0.28)}" stroke-linejoin="round" paint-order="stroke"` : '';
-    this.out.push(`<text x="${n(x)}" y="${n(y)}" font-size="${n(sizeMm)}" fill="${hex}"${anchor}${rot}${h}>${esc(s)}</text>`);
+    const ff = mincho ? ` font-family="${esc(MINCHO)}"` : '';
+    this.out.push(`<text x="${n(x)}" y="${n(y)}" font-size="${n(sizeMm)}" fill="${hex}"${ff}${anchor}${rot}${h}>${esc(s)}</text>`);
     return this;
   }
 

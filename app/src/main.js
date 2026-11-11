@@ -2155,6 +2155,8 @@ function renderSheetPanel(p) {
         ${field('図番', sh.number).replace('data-prop="図番"', 'data-k="number"')}
         ${field('会社名', sh.company).replace('data-prop="会社名"', 'data-k="company"')}
         ${field('北の向き', sh.north, { numeric: true, unit: '°' }).replace('data-prop="北の向き"', 'data-k="north"')}
+        <label class="field"><span>描き方</span><select data-k="style">${opt(['sekou', 'teian'], sh.style, (x) => (x === 'teian' ? '提案（色付き・題の帯）' : '施工図（表題欄）'))}</select></label>
+        <label class="check"><input type="checkbox" data-k="plantTable" ${sh.plantTable !== false ? 'checked' : ''}> 植栽仕様表を載せる（樹木に記号の番号）</label>
         <label class="check"><input type="checkbox" data-k="underlays" ${sh.underlays ? 'checked' : ''}> 下図も印刷する</label>
       </form>
       <div class="row"><button type="button" id="sh-fit">全体が入るように</button></div>
@@ -2242,8 +2244,8 @@ async function makePdfFile({ all = false } = {}) {
       if (blob) images.set(u.blob, await jpegOf(blob));
     }
   }
-  if (all) return new File([plotSheets(state.doc, sheets, { images })], SH.pdfSetFileName(state.doc), { type: 'application/pdf' });
-  const bytes = plotSheet(state.doc, sh, { images });
+  if (all) return new File([plotSheets(state.doc, sheets, { images, species: library })], SH.pdfSetFileName(state.doc), { type: 'application/pdf' });
+  const bytes = plotSheet(state.doc, sh, { images, species: library });
   return new File([bytes], SH.pdfFileName(state.doc, sh), { type: 'application/pdf' });
 }
 

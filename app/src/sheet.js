@@ -16,6 +16,8 @@ export function defaultSheet() {
     company: '山波創苑',
     north: 0, // 北の向き。図の上を 0°、時計回り。
     underlays: true,
+    style: 'sekou', // 描き方：sekou 施工図（表題欄）／teian 提案（色を付け、下に題の帯）
+    plantTable: true, // 樹木があれば植栽仕様表を載せる
   };
 }
 
@@ -35,6 +37,11 @@ export function layout(sheet) {
   let [W, H] = PAPERS[sheet.paper] || PAPERS.A3;
   if (sheet.orient === 'portrait') [W, H] = [H, W];
   const frame = { x: MARGIN, y: MARGIN, w: W - 2 * MARGIN, h: H - 2 * MARGIN };
+  if (sheet.style === 'teian') {
+    // 提案：枠の下に、題の帯（全幅）
+    const th = 22;
+    return { W, H, frame, title: { x: frame.x, y: frame.y + frame.h - th, w: frame.w, h: th } };
+  }
   const tw = Math.min(120, frame.w * 0.55);
   const th = 30;
   const title = { x: frame.x + frame.w - tw, y: frame.y + frame.h - th, w: tw, h: th };

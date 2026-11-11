@@ -7,8 +7,12 @@ import { pixelToWorld } from './underlay.js';
 import { Page, buildPdf } from './pdfwriter.js';
 import { SvgPage, buildSvg } from './svgwriter.js';
 import { contoursOf, labelSpot, fmtH } from './terrain.js';
+import { plantSchedule, fmtM } from './planting.js';
 
-const C = {
+// 山波の色：新緑・紅葉・樹皮
+const BRAND = { green: '#5A9F4D', momiji: '#E68823', bark: '#6B4C33' };
+
+const BASE = {
   ink: '#1c211e',
   muted: '#4a524d',
   bldg: '#dcdcd6',
@@ -27,6 +31,19 @@ const C = {
   plan: '#a8432f',
   white: '#ffffff',
 };
+
+// 提案の描き方の色（平面図に色を付ける）
+const TEIAN = {
+  bldg: '#6f6a64', pave: '#d6d4ce', paveInk: '#9a948a', plant: '#a9cf8f', plantInk: BRAND.green,
+  tree: '#8cbf72', treeInk: '#3f7a35', stone: '#a59f92', stoneInk: '#6b6458',
+};
+const MATERIAL_FILL = {
+  芝: '#8fc06f', 人工芝: '#7ab85c', 砂利: '#bdb8ae', 防草シート砂利敷: '#b5b0a6', 洗い出し: '#d8c9aa', タイル: '#dccbb2',
+  インターロッキング: '#c9a27f', 平板: '#d0c8b9', 土間コンクリート: '#d9d7d1', ウッドデッキ: '#8a6446',
+};
+// 今の描き方の色（drawSheet で入れ替える）
+const C = { ...BASE };
+let teian = false;
 
 const TXT = 2.2; // 注記の文字の高さ（紙の mm）
 
@@ -90,12 +107,13 @@ function drawElement(pg, el, P, sheet) {
       return;
     case 'tatemono':
       pg.save().fill(C.bldg).stroke(C.ink).lineWidth(0.5).path(pts, true).doFillStroke().restore();
-      hatch(pg, pts, 45, 2.5, { width: 0.1 });
+      if (!teian) hatch(pg, pts, 45, 2.5, { width: 0.1 });
       pg.save().stroke(C.ink).lineWidth(0.5).path(pts, true).doStroke().restore();
       return;
     case 'hoso': {
-      const green = el.props.材料 === '芝';
-      pg.save().fill(green ? C.plant : C.pave).path(pts, true).doFill().restore();
+      const green = el.props.材料 === '芝' || el.props.材料 === '人工芝';
+      const fill = teian ? MATERIAL_FILL[el.props.材料] || C.pave : green ? C.plant : C.pave;
+      pg.save().fill(fill).path(pts, true).doFill().restore();
       paveHatch(pg, pts, el.props.材料, sheet.scale);
       pg.save().stroke(green ? C.plantInk : C.paveInk).lineWidth(0.25).path(pts, true).doStroke().restore();
       return;
@@ -153,7 +171,7 @@ function drawDim(pg, [a, b, o]) {
   pg.doStroke().restore();
 }
 
-function drawLabels(pg, el, P, sheet) {
+function drawLabels(pg, el, P, sheet, sched) {
   const g = KINDS[el.kind].geom;
   const pts = (g === 'polygon' ? densify(el.pts, el.b, true) : el.pts).map(P);
   if (g === 'polygon' && pts.length >= 3 && ['hoso', 'shokusaitai', 'tatemono', 'keiseki'].includes(el.kind)) {
@@ -162,6 +180,13 @@ function drawLabels(pg, el, P, sheet) {
     const name = el.kind === 'hoso' ? el.props.材料 : el.kind === 'tatemono' ? el.props.名前 || '建物' : el.kind === 'keiseki' ? el.props.石種 || '景石' : el.props.内容 || '植栽帯';
     pg.text(name, [c[0], c[1]], TXT, { align: 'middle', halo: C.white });
     if (el.kind !== 'keiseki') pg.text(`${(measure(el).area / 1e6).toFixed(2)}㎡`, [c[0], c[1] + TXT * 1.3], TXT * 0.85, { align: 'middle', hex: C.muted, halo: C.white });
+  } else if (el.kind === 'jumoku' && sched?.numberOf.has(el.id)) {
+    // 植栽仕様表の記号：白い丸に番号
+    const [x, y] = pts[0];
+    const no = String(sched.numberOf.get(el.id));
+    const r = no.length > 1 ? 1.75 : 1.5;
+    pg.save().fill(C.white).stroke(BRAND.green).lineWidth(0.2).circle([x, y], r).doFillStroke().restore();
+    pg.text(no, [x, y + 0.7], 1.9, { align: 'middle', hex: C.ink });
   } else if (el.kind === 'jumoku' && el.props.樹種) {
     const [x, y] = pts[0];
     pg.text(el.props.樹種, [x, y + el.r / sheet.scale + TXT * 1.1], TXT * 0.9, { align: 'middle', hex: C.treeInk, halo: C.white });
@@ -319,28 +344,40 @@ export function plotSheet(doc, sheet, opts = {}) {
 }
 
 // 何枚かの図面を一つの PDF にする（一枚が一頁）。
-export function plotSheets(doc, sheets, { images = new Map(), date = new Date(), title = `${doc.siteName || doc.siteId || '無題'} 図面` } = {}) {
+// species：樹種ライブラリ（植栽仕様表の C に使う）
+export function plotSheets(doc, sheets, { images = new Map(), date = new Date(), species = [], title = `${doc.siteName || doc.siteId || '無題'} 図面` } = {}) {
   const pages = sheets.map((sheet) => {
     const L = layout(sheet);
     const pg = new Page(L.W, L.H);
-    drawSheet(pg, doc, sheet, images, date);
+    drawSheet(pg, doc, sheet, images, date, species);
     return pg;
   });
   return buildPdf(pages, { title, author: sheets[0]?.company || '' });
 }
 
 // ノートに添える絵（SVG）。図面の設定の用紙で、部材が全部入る縮尺を選ぶ。下図は描かない。部材が無ければ null。
-export function figureSvg(doc, { date = new Date() } = {}) {
+export function figureSvg(doc, { date = new Date(), species = [] } = {}) {
   const pts = live(doc).flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
   if (!pts.length) return null;
   const sheet = fitToBox({ ...sheetOf(doc), underlays: false }, bbox(pts));
   const L = layout(sheet);
   const pg = new SvgPage(L.W, L.H);
-  drawSheet(pg, doc, sheet, new Map(), date);
+  drawSheet(pg, doc, sheet, new Map(), date, species);
   return buildSvg(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}` });
 }
 
-function drawSheet(pg, doc, sheet, images, date) {
+function drawSheet(pg, doc, sheet, images, date, species = []) {
+  teian = sheet.style === 'teian';
+  Object.assign(C, BASE, teian ? TEIAN : {});
+  try {
+    drawSheetBody(pg, doc, sheet, images, date, species);
+  } finally {
+    teian = false;
+    Object.assign(C, BASE);
+  }
+}
+
+function drawSheetBody(pg, doc, sheet, images, date, species) {
   const L = layout(sheet);
   const P = (p) => worldToPaper(sheet, L, p);
   const f = L.frame;
@@ -351,13 +388,68 @@ function drawSheet(pg, doc, sheet, images, date) {
   drawUnderlays(pg, doc, sheet, L, images);
   for (const el of els) drawElement(pg, el, P, sheet);
   drawContours(pg, doc, P);
-  for (const el of els) drawLabels(pg, el, P, sheet);
+  const sched = sheet.plantTable !== false ? plantSchedule(doc, species) : null;
+  const useSched = sched && sched.rows.length ? sched : null;
+  for (const el of els) drawLabels(pg, el, P, sheet, useSched);
   pg.restore();
 
-  pg.save().stroke(C.ink).lineWidth(0.7).rect(f.x, f.y, f.w, f.h).doStroke().restore();
+  pg.save().stroke(C.ink).lineWidth(teian ? 0.35 : 0.7).rect(f.x, f.y, f.w, f.h).doStroke().restore();
   northArrow(pg, [f.x + f.w - 12, f.y + 14], sheet.north || 0);
-  scaleBar(pg, [f.x + 8, f.y + f.h - 10], sheet.scale);
   const p2 = (v) => String(v).padStart(2, '0');
   const dateText = `${date.getFullYear()}.${p2(date.getMonth() + 1)}.${p2(date.getDate())}`;
-  titleBlock(pg, doc, sheet, L, dateText);
+  if (teian) {
+    pg.text(`平面プラン　1/${sheet.scale}`, [f.x + f.w - 12, f.y + 26], 2.6, { align: 'middle', hex: C.ink });
+    scaleBar(pg, [f.x + 8, L.title.y - 6], sheet.scale);
+    if (useSched) plantTable(pg, useSched.rows, [f.x + 6, L.title.y - 14]);
+    teianBand(pg, doc, sheet, L, dateText);
+  } else {
+    scaleBar(pg, [f.x + 8, f.y + f.h - 10], sheet.scale);
+    if (useSched) plantTable(pg, useSched.rows, [f.x + 6, f.y + f.h - 18]);
+    titleBlock(pg, doc, sheet, L, dateText);
+  }
+}
+
+// 植栽仕様表。bottomLeft：表の左下（紙の mm）
+function plantTable(pg, rows, [x0, yb]) {
+  const cols = [['記号', 8], ['樹木名', 26], ['H', 9], ['C', 9], ['W', 9], ['数量', 9], ['備考', 14]];
+  const rh = 4.2, size = 2.3;
+  const w = cols.reduce((s, c) => s + c[1], 0);
+  const h = rh * (rows.length + 1);
+  const y0 = yb - h;
+  pg.text('植栽仕様表', [x0 + w / 2, y0 - 1.6], 2.8, { align: 'middle', hex: C.ink, mincho: teian });
+  pg.save().fill(C.white).rect(x0, y0, w, h).doFill().restore();
+  pg.save().fill(teian ? BRAND.green : '#e6f0e1').rect(x0, y0, w, rh).doFill().restore();
+  pg.save().stroke(C.ink).lineWidth(0.12);
+  for (let i = 0; i <= rows.length + 1; i++) pg.moveTo([x0, y0 + rh * i]).lineTo([x0 + w, y0 + rh * i]);
+  let x = x0;
+  for (const [, cw] of cols) { pg.moveTo([x, y0]).lineTo([x, y0 + h]); x += cw; }
+  pg.moveTo([x, y0]).lineTo([x, y0 + h]);
+  pg.doStroke().restore();
+  const put = (s, ci, row, opts = {}) => {
+    const cx = x0 + cols.slice(0, ci).reduce((a, c) => a + c[1], 0);
+    const cw = cols[ci][1];
+    pg.text(fitText(String(s), size, cw - 1.5), [cx + cw / 2, y0 + rh * row + rh * 0.7], size, { align: 'middle', ...opts });
+  };
+  cols.forEach(([t], i) => put(t, i, 0, { hex: teian ? C.white : C.ink }));
+  rows.forEach((r, i) => {
+    const row = i + 1;
+    [r.記号, r.樹木名, fmtM(r.H), fmtM(r.C), fmtM(r.W), r.数量, r.備考 || ''].forEach((v, ci) => put(v, ci, row));
+  });
+}
+
+// 提案の下の帯：新緑と紅葉の線、明朝の題、会社名と日付
+function teianBand(pg, doc, sheet, L, dateText) {
+  const t = L.title;
+  const split = t.x + t.w * 0.62;
+  pg.save().stroke(BRAND.green).lineWidth(0.8).moveTo([t.x, t.y]).lineTo([split, t.y]).doStroke();
+  pg.stroke(BRAND.momiji).moveTo([split, t.y]).lineTo([t.x + t.w, t.y]).doStroke().restore();
+  const who = String(doc.siteName || '').trim().replace(/様?邸$/, '');
+  const title = sheet.title && sheet.title !== '平面図' ? sheet.title : '外構プラン';
+  const main = who ? `${who}様　${title}` : title;
+  const right = t.x + t.w - 4;
+  pg.text(fitText(main, 8, t.w - 70), [right - 58, t.y + t.h * 0.66], 8, { align: 'end', hex: C.ink, mincho: true });
+  pg.save().stroke(BRAND.bark).lineWidth(0.2).moveTo([right - 54, t.y + 4]).lineTo([right - 54, t.y + t.h - 4]).doStroke().restore();
+  pg.text(sheet.company || '', [right - 50, t.y + t.h * 0.42], 3.6, { hex: BRAND.bark, mincho: true });
+  pg.text(`${dateText}　縮尺 1/${sheet.scale}　${sheet.paper}${sheet.number ? `　${sheet.number}` : ''}`, [right - 50, t.y + t.h * 0.42 + 5.5], 2.2, { hex: C.muted });
+  pg.save().fill(BRAND.momiji).circle([right - 1.5, t.y + 4.5], 1.1).doFill().restore();
 }

@@ -95,7 +95,8 @@ export class Page {
   clip() { return this.raw('W n'); }
 
   // 文字。(x, y) は基準線の左端。angle は度（紙の上で反時計回り）。align: start / middle / end
-  text(s, [x, y], sizeMm, { angle = 0, align = 'start', hex = '#000000', halo = null } = {}) {
+  // mincho：明朝（HeiseiMin-W3）で書く。題などに。
+  text(s, [x, y], sizeMm, { angle = 0, align = 'start', hex = '#000000', halo = null, mincho = false } = {}) {
     if (s === '' || s == null) return this;
     const w = textWidth(s, sizeMm);
     const dx = align === 'middle' ? -w / 2 : align === 'end' ? -w : 0;
@@ -107,10 +108,10 @@ export class Page {
     const size = n(sizeMm * PT);
     if (halo) {
       const [r, g, b] = rgb(halo);
-      this.raw(`q ${n(r)} ${n(g)} ${n(b)} RG ${n(sizeMm * 0.28 * PT)} w 1 j BT /F1 ${size} Tf 1 Tr ${tm} ${tjArray(s)} ET Q`);
+      this.raw(`q ${n(r)} ${n(g)} ${n(b)} RG ${n(sizeMm * 0.28 * PT)} w 1 j BT /${mincho ? 'F2' : 'F1'} ${size} Tf 1 Tr ${tm} ${tjArray(s)} ET Q`);
     }
     const [r, g, b] = rgb(hex);
-    return this.raw(`q ${n(r)} ${n(g)} ${n(b)} rg BT /F1 ${size} Tf 0 Tr ${tm} ${tjArray(s)} ET Q`);
+    return this.raw(`q ${n(r)} ${n(g)} ${n(b)} rg BT /${mincho ? 'F2' : 'F1'} ${size} Tf 0 Tr ${tm} ${tjArray(s)} ET Q`);
   }
 
   // JPEG をそのまま置く。m は単位正方形を紙（pt）へ写す行列 [a b c d e f]。
@@ -147,6 +148,9 @@ export function buildPdf(pageOrPages, { title = '', author = '', creator = '縄�
   const desc = add('<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 4 /FontBBox [-92 -250 1010 922] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 737 /StemV 93 >>');
   const cid = add(`<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor ${desc} 0 R /DW 1000 /W [231 389 500] >>`);
   const font = add(`<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5-UniJIS-UCS2-HW-H /Encoding /UniJIS-UCS2-HW-H /DescendantFonts [${cid} 0 R] >>`);
+  const descM = add('<< /Type /FontDescriptor /FontName /HeiseiMin-W3 /Flags 6 /FontBBox [-123 -257 1001 910] /ItalicAngle 0 /Ascent 859 /Descent -141 /CapHeight 709 /StemV 69 >>');
+  const cidM = add(`<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiMin-W3 /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor ${descM} 0 R /DW 1000 /W [231 389 500] >>`);
+  const fontM = add(`<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiMin-W3-UniJIS-UCS2-HW-H /Encoding /UniJIS-UCS2-HW-H /DescendantFonts [${cidM} 0 R] >>`);
   const kids = list.map((page) => {
     const W = n(page.W * PT), H = n(page.H * PT);
     const pageObj = add(null);
@@ -157,7 +161,7 @@ export function buildPdf(pageOrPages, { title = '', author = '', creator = '縄�
       stream: im.bytes,
     })} 0 R`);
     const gs = [...page.gstates.values()].map((g) => `/${g.name} ${add(`<< /Type /ExtGState /ca ${n(g.a)} /CA ${n(g.a)} /BM /${g.blend} >>`)} 0 R`);
-    objs[pageObj - 1] = `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${W} ${H}] /Contents ${content} 0 R /Resources << /Font << /F1 ${font} 0 R >> /XObject << ${xobjs.join(' ')} >> /ExtGState << ${gs.join(' ')} >> >> >>`;
+    objs[pageObj - 1] = `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${W} ${H}] /Contents ${content} 0 R /Resources << /Font << /F1 ${font} 0 R /F2 ${fontM} 0 R >> /XObject << ${xobjs.join(' ')} >> /ExtGState << ${gs.join(' ')} >> >> >>`;
     return pageObj;
   });
   const info = add(`<< /Title ${hexUtf16(title)} /Author ${hexUtf16(author)} /Creator ${hexUtf16(creator)} /CreationDate (D:${pdfDate(new Date())}) >>`);

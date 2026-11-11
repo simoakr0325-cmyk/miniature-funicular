@@ -7,13 +7,17 @@
   --ink: #1c211e;
   --muted: #4a524d;
   --rule: #cfd5d0;
-  --accent: #2f5d46;
+  /* 山波の色：新緑 #5A9F4D・紅葉 #E68823・樹皮 #6B4C33。文字に使う所は読める濃さに沈める */
+  --brand-green: #5a9f4d;
+  --brand-momiji: #e68823;
+  --brand-bark: #6b4c33;
+  --accent: #3f7a35;
   --accent-ink: #ffffff;
-  --accent-soft: #e3ece6;
+  --accent-soft: #e6f0e1;
   --danger: #8a3b25;
   --grid: #e6e9e4;
   --grid-major: #d3d9d2;
-  --sel: #c2571a;
+  --sel: #b85f12;
   --c-site: #1c211e;
   --c-bldg: #d9d9d4;
   --c-pave: #e9e6dd;
@@ -41,7 +45,10 @@
     --ink: #e6ebe7;
     --muted: #aab5ae;
     --rule: #34403a;
-    --accent: #8fc4a6;
+    --brand-green: #7cbc6b;
+    --brand-momiji: #f0a050;
+    --brand-bark: #c9a585;
+    --accent: #8cc47c;
     --accent-ink: #10201a;
     --accent-soft: #24332b;
     --danger: #e39a82;
@@ -68,7 +75,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --ground: #151a17; --surface: #1d2420; --paper: #181e1b; --ink: #e6ebe7; --muted: #aab5ae; --rule: #34403a;
-  --accent: #8fc4a6; --accent-ink: #10201a; --accent-soft: #24332b; --danger: #e39a82; --grid: #222a26; --grid-major: #2d3832;
+  --brand-green: #7cbc6b; --brand-momiji: #f0a050; --brand-bark: #c9a585;
+  --accent: #8cc47c; --accent-ink: #10201a; --accent-soft: #24332b; --danger: #e39a82; --grid: #222a26; --grid-major: #2d3832;
   --sel: #f0a061; --c-site: #e6ebe7; --c-bldg: #3a403c; --c-pave: #2f2e29; --c-pave-ink: #a49d8b; --c-plant: #24331f;
   --c-plant-ink: #8dbb7e; --c-tree: rgba(141, 187, 126, 0.2); --c-tree-ink: #9ccc8c; --c-stone: #4a463e; --c-stone-ink: #c9bfa9;
   --c-wall: #cfd6d1; --c-curb: #9aa39d; --c-note: #9dbbe0; --c-ground: #d2a679; --c-plan: #ee8f78;
@@ -120,6 +128,9 @@ input[type="text"], select {
   padding: 0 12px; padding-top: env(safe-area-inset-top);
   background: var(--surface); border-bottom: 1px solid var(--rule);
   min-width: 0;
+  /* 上の帯の下端に、新緑から紅葉へ移る細い線 */
+  background-image: linear-gradient(90deg, var(--brand-green) 0 62%, var(--brand-momiji) 62% 100%);
+  background-size: 100% 3px; background-repeat: no-repeat; background-position: bottom;
 }
 .bar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .spacer { flex: 1; }
@@ -155,7 +166,8 @@ body:has(.tools [data-tool="select"][aria-pressed="true"]) .canvas { cursor: def
   padding-bottom: env(safe-area-inset-bottom);
 }
 .psec { padding: 16px; border-bottom: 1px solid var(--rule); display: grid; gap: 12px; }
-.psec h2 { margin: 0; font-size: 1rem; display: flex; align-items: baseline; gap: 8px; }
+.psec h2 { margin: 0; font-size: 1rem; display: flex; align-items: baseline; gap: 8px; color: var(--brand-bark); }
+.psec h2::before { content: ''; align-self: center; width: 4px; height: 0.9em; border-radius: 2px; background: var(--brand-green); }
 .psec h2 small { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
 .fields { display: grid; gap: 10px; }
 .field { display: grid; grid-template-columns: 5.5em 1fr; align-items: center; gap: 8px; }
