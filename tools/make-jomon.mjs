@@ -4,10 +4,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const USE = {
-  'J-24': '平行沈線+刻列帯（横リピート。本文に最も干渉しない罫）',
-  'J-34': '隆帯結節コーナー（角。左上の角の形）',
-  'J-36': '帯の起点飾り（終端。J-37 と対）',
-  'J-37': '帯の終点飾り（終端。J-36 と対）',
+  'J-12': '入組双渦帯（横リピート。S字の双渦。一本の線の両端がそれぞれ核で終わる）',
+  'J-32': '渦巻コーナー（角。角の懐に双渦が座る。C 群で最も装飾が強い。左上の角の形）',
+  'J-39': '眉月渦文（単体。眉月が渦を抱く。ロゴ核の第一候補）',
 };
 
 const html = readFileSync(process.argv[2], 'utf8');
@@ -38,7 +37,7 @@ const body = Object.entries(out).map(([id, s]) => `  '${id}': { // ${s.note}
 
 writeFileSync(new URL('../app/src/jomon.js', import.meta.url), `// 山波創苑の縄文文様（縄文文様50 カタログから、tools/make-jomon.mjs で書き出したもの）。
 // 形は塗りの多角形（x, y を交互に並べた点列）と円。座標は各文様の viewBox の単位、y は下向き。
-// 縁取りに使う文様だけを持つ。しつこくならないよう、図面では細く・淡く・少なく使う。
+// カタログの中で最も大胆で縄文らしいもの（入組双渦帯・渦巻コーナー・眉月渦文）を持つ。
 
 export const JOMON = {
 ${body}

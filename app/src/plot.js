@@ -401,13 +401,15 @@ function drawSheetBody(pg, doc, sheet, images, date, species, logo) {
   pg.restore();
 
   pg.save().stroke(C.ink).lineWidth(teian ? 0.35 : 0.7).rect(f.x, f.y, f.w, f.h).doStroke().restore();
-  // 提案：枠の四隅に隆帯結節コーナー（J-34）を、樹皮の色で小さく
-  if (teian) for (const [cx, cy, k] of [[f.x, f.y, 'tl'], [f.x + f.w, f.y, 'tr'], [f.x, f.y + f.h, 'bl'], [f.x + f.w, f.y + f.h, 'br']]) jomonCorner(pg, 'J-34', [cx, cy], 9, k, BRAND.bark);
-  northArrow(pg, [f.x + f.w - 12, f.y + 14], sheet.north || 0);
+  // 提案：枠の上の二隅に渦巻コーナー（J-32）を、樹皮の色で大きく（下は題の帯の入組双渦帯が受ける）
+  if (teian) for (const [cx, cy, k] of [[f.x, f.y, 'tl'], [f.x + f.w, f.y, 'tr']]) jomonCorner(pg, 'J-32', [cx + (k === 'tl' ? 2 : -2), cy + 2], 26, k, BRAND.bark);
+  // 提案では右上の角に文様があるので、方位記号はその内側へ寄せる
+  const nx = teian ? f.x + f.w - 44 : f.x + f.w - 12;
+  northArrow(pg, [nx, f.y + 14], sheet.north || 0);
   const p2 = (v) => String(v).padStart(2, '0');
   const dateText = `${date.getFullYear()}.${p2(date.getMonth() + 1)}.${p2(date.getDate())}`;
   if (teian) {
-    pg.text(`平面プラン　1/${sheet.scale}`, [f.x + f.w - 12, f.y + 26], 2.6, { align: 'middle', hex: C.ink });
+    pg.text(`平面プラン　1/${sheet.scale}`, [nx, f.y + 26], 2.6, { align: 'middle', hex: C.ink });
     scaleBar(pg, [f.x + 8, L.title.y - 9], sheet.scale);
     if (useSched) plantTable(pg, useSched.rows, [f.x + 6, L.title.y - 17]);
     teianBand(pg, doc, sheet, L, dateText, logo);
@@ -449,12 +451,14 @@ function plantTable(pg, rows, [x0, yb]) {
 // 提案の下の帯：新緑と紅葉の線、明朝の題、会社名と日付
 function teianBand(pg, doc, sheet, L, dateText, logo) {
   const t = L.title;
-  // 帯の上の縁取り：平行沈線+刻列帯（J-24）を新緑で、両端に起点飾り・終点飾り（J-36・J-37）を紅葉で
-  const sh = 3.2, ends = (JOMON['J-36'].w / JOMON['J-36'].h) * sh;
-  const strip = jomonStrip(pg, 'J-24', [t.x + 4 + ends, t.y - sh / 2], t.w - 8 - ends * 2, sh, BRAND.green);
-  const k = sh / JOMON['J-36'].h;
-  drawJomon(pg, 'J-36', (x, y) => [strip.start - ends + x * k, t.y - sh / 2 + y * k], BRAND.momiji);
-  drawJomon(pg, 'J-37', (x, y) => [strip.end + x * k, t.y - sh / 2 + y * k], BRAND.momiji);
+  // 帯の上に新緑の線。帯の左には入組双渦帯（J-12）を樹皮の色で大きく、その頭に眉月渦文（J-39）を紅葉で
+  pg.save().stroke(BRAND.green).lineWidth(0.6).moveTo([t.x, t.y]).lineTo([t.x + t.w, t.y]).doStroke().restore();
+  const sh = t.h - 7, top = t.y + 3.5;
+  const mk = sh / JOMON['J-39'].h;
+  drawJomon(pg, 'J-39', (x, y) => [t.x + 5 + x * mk, top + y * mk], BRAND.momiji);
+  const unit = (JOMON['J-12'].w / JOMON['J-12'].h) * sh;
+  const room = t.w * 0.42 - 26;
+  if (room >= unit) jomonStrip(pg, 'J-12', [t.x + 26, top], Math.min(room, unit * 2), sh, BRAND.bark);
   const who = String(doc.siteName || '').trim().replace(/様?邸$/, '');
   const title = sheet.title && sheet.title !== '平面図' ? sheet.title : '外構プラン';
   const main = who ? `${who}様　${title}` : title;

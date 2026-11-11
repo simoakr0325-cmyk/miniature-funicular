@@ -13,14 +13,14 @@ const doc = () => {
   return d;
 };
 
-test('縁取りに使う文様（J-24・J-34・J-36・J-37）が形として入っている', () => {
-  for (const id of ['J-24', 'J-34', 'J-36', 'J-37']) {
+test('大胆な縄文文様（J-12 入組双渦帯・J-32 渦巻コーナー・J-39 眉月渦文）が形として入っている', () => {
+  for (const id of ['J-12', 'J-32', 'J-39']) {
     const s = JOMON[id];
     assert.ok(s.w > 0 && s.h > 0, id);
     assert.ok(s.polys.length > 0, id);
     for (const p of s.polys) assert.equal(p.length % 2, 0, id);
   }
-  assert.equal(JOMON['J-24'].circles.length, 6);
+  assert.equal(JOMON['J-12'].w, 672);
 });
 
 test('会社名が山波創苑なら筆文字のロゴを入れ、ほかの名前なら文字で書く', () => {
