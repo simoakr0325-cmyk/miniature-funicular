@@ -8,6 +8,16 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const MINCHO = "'Hiragino Mincho ProN','Yu Mincho','YuMincho','Noto Serif JP',serif";
 const FONT = "'Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic','Meiryo','Noto Sans JP',sans-serif";
 
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function b64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2];
+    s += B64[a >> 2] + B64[((a & 3) << 4) | ((b ?? 0) >> 4)] + (b === undefined ? '=' : B64[((b & 15) << 2) | ((c ?? 0) >> 6)]) + (c === undefined ? '=' : B64[c & 63]);
+  }
+  return s;
+}
+
 export class SvgPage {
   constructor(wMm, hMm) {
     this.W = wMm;
@@ -108,6 +118,11 @@ export class SvgPage {
   }
 
   image() { return this; }
+
+  placeImage(jpegBytes, pxW, pxH, x, y, w, h) {
+    this.out.push(`<image href="data:image/jpeg;base64,${b64(jpegBytes)}" x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="none"${this.common()}/>`);
+    return this;
+  }
   imageMatrix() { return [1, 0, 0, 1, 0, 0]; }
 }
 

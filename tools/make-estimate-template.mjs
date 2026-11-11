@@ -15,7 +15,7 @@ const edit = (name, fn) => files.set(name, enc.encode(fn(dec.decode(files.get(na
 
 const sst = dec.decode(files.get('xl/sharedStrings.xml'));
 const swap = [
-  [/山波ライフ[\s　]*下條[\s　]*晃/, '屋号　氏名'],
+  [/山波ライフ[\s　]*下條[\s　]*晃/, '山波創苑'],
   [/〒\d{3}-\d{4}/, '〒000-0000'],
   [/長野県[^<]*/, '住所'],
   [/TEL：[\d-]+/, 'TEL：'],

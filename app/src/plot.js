@@ -8,6 +8,7 @@ import { Page, buildPdf } from './pdfwriter.js';
 import { SvgPage, buildSvg } from './svgwriter.js';
 import { contoursOf, labelSpot, fmtH } from './terrain.js';
 import { plantSchedule, fmtM } from './planting.js';
+import { drawJomon, jomonStrip, jomonCorner, JOMON } from './jomon.js';
 
 // 山波の色：新緑・紅葉・樹皮
 const BRAND = { green: '#5A9F4D', momiji: '#E68823', bark: '#6B4C33' };
@@ -304,7 +305,7 @@ function scaleBar(pg, [x, y], scale) {
   pg.text(lbl(lenW) + (lenW >= 1000 ? 'm' : 'mm'), [x + lenP, y + 4.4], 2, { align: 'middle' });
 }
 
-function titleBlock(pg, doc, sheet, L, dateText) {
+function titleBlock(pg, doc, sheet, L, dateText, logo) {
   const t = L.title;
   pg.save().fill(C.white).stroke(C.ink).lineWidth(0.5).rect(t.x, t.y, t.w, t.h).doFillStroke().restore();
   const rowH = t.h / 4;
@@ -319,7 +320,10 @@ function titleBlock(pg, doc, sheet, L, dateText) {
   const base = (row) => t.y + rowH * row + rowH * 0.68;
   const label = (s, x, row) => pg.text(s, [x + 1.5, base(row)], 2.2, { hex: C.muted });
   const value = (s, x, row, size = 2.8) => pg.text(fitText(s, size, (row === 0 ? t.w : x >= xr ? rightW : xr - rightLabelW - x) - 3), [x + 1.5, base(row)], size);
-  pg.text(sheet.company || '', [t.x + t.w / 2, base(0)], 3.6, { align: 'middle' });
+  if (logo) {
+    const lh = rowH * 0.78, lw = (logo.w / logo.h) * lh;
+    pg.placeImage(logo.bytes, logo.w, logo.h, t.x + (t.w - lw) / 2, t.y + (rowH - lh) / 2, lw, lh);
+  } else pg.text(sheet.company || '', [t.x + t.w / 2, base(0)], 3.6, { align: 'middle' });
   const site = [doc.siteName, doc.siteId && `（${doc.siteId}）`].filter(Boolean).join('');
   label('現場', t.x, 1); value(site || '—', t.x + labelW, 1);
   label('図番', xr - rightLabelW, 1); value(sheet.number || '—', xr, 1);
@@ -344,40 +348,43 @@ export function plotSheet(doc, sheet, opts = {}) {
 }
 
 // 何枚かの図面を一つの PDF にする（一枚が一頁）。
-// species：樹種ライブラリ（植栽仕様表の C に使う）
-export function plotSheets(doc, sheets, { images = new Map(), date = new Date(), species = [], title = `${doc.siteName || doc.siteId || '無題'} 図面` } = {}) {
+// species：樹種ライブラリ（植栽仕様表の C に使う）。logo：会社のロゴ（{ bytes: JPEG, w, h }、会社名が山波創苑のとき使う）
+export function plotSheets(doc, sheets, { images = new Map(), date = new Date(), species = [], logo = null, title = `${doc.siteName || doc.siteId || '無題'} 図面` } = {}) {
   const pages = sheets.map((sheet) => {
     const L = layout(sheet);
     const pg = new Page(L.W, L.H);
-    drawSheet(pg, doc, sheet, images, date, species);
+    drawSheet(pg, doc, sheet, images, date, species, logo);
     return pg;
   });
   return buildPdf(pages, { title, author: sheets[0]?.company || '' });
 }
 
 // ノートに添える絵（SVG）。図面の設定の用紙で、部材が全部入る縮尺を選ぶ。下図は描かない。部材が無ければ null。
-export function figureSvg(doc, { date = new Date(), species = [] } = {}) {
+export function figureSvg(doc, { date = new Date(), species = [], logo = null } = {}) {
   const pts = live(doc).flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts));
   if (!pts.length) return null;
   const sheet = fitToBox({ ...sheetOf(doc), underlays: false }, bbox(pts));
   const L = layout(sheet);
   const pg = new SvgPage(L.W, L.H);
-  drawSheet(pg, doc, sheet, new Map(), date, species);
+  drawSheet(pg, doc, sheet, new Map(), date, species, logo);
   return buildSvg(pg, { title: `${doc.siteName || doc.siteId || '無題'} ${sheet.title || ''}` });
 }
 
-function drawSheet(pg, doc, sheet, images, date, species = []) {
+function drawSheet(pg, doc, sheet, images, date, species = [], logo = null) {
   teian = sheet.style === 'teian';
   Object.assign(C, BASE, teian ? TEIAN : {});
   try {
-    drawSheetBody(pg, doc, sheet, images, date, species);
+    drawSheetBody(pg, doc, sheet, images, date, species, useLogo(sheet, logo));
   } finally {
     teian = false;
     Object.assign(C, BASE);
   }
 }
 
-function drawSheetBody(pg, doc, sheet, images, date, species) {
+// ロゴは、会社名が山波創苑のときだけ（ほかの名前に変えたら文字で）
+const useLogo = (sheet, logo) => (logo && /山波創苑/.test(sheet.company || '') ? logo : null);
+
+function drawSheetBody(pg, doc, sheet, images, date, species, logo) {
   const L = layout(sheet);
   const P = (p) => worldToPaper(sheet, L, p);
   const f = L.frame;
@@ -394,18 +401,20 @@ function drawSheetBody(pg, doc, sheet, images, date, species) {
   pg.restore();
 
   pg.save().stroke(C.ink).lineWidth(teian ? 0.35 : 0.7).rect(f.x, f.y, f.w, f.h).doStroke().restore();
+  // 提案：枠の四隅に隆帯結節コーナー（J-34）を、樹皮の色で小さく
+  if (teian) for (const [cx, cy, k] of [[f.x, f.y, 'tl'], [f.x + f.w, f.y, 'tr'], [f.x, f.y + f.h, 'bl'], [f.x + f.w, f.y + f.h, 'br']]) jomonCorner(pg, 'J-34', [cx, cy], 9, k, BRAND.bark);
   northArrow(pg, [f.x + f.w - 12, f.y + 14], sheet.north || 0);
   const p2 = (v) => String(v).padStart(2, '0');
   const dateText = `${date.getFullYear()}.${p2(date.getMonth() + 1)}.${p2(date.getDate())}`;
   if (teian) {
     pg.text(`平面プラン　1/${sheet.scale}`, [f.x + f.w - 12, f.y + 26], 2.6, { align: 'middle', hex: C.ink });
-    scaleBar(pg, [f.x + 8, L.title.y - 6], sheet.scale);
-    if (useSched) plantTable(pg, useSched.rows, [f.x + 6, L.title.y - 14]);
-    teianBand(pg, doc, sheet, L, dateText);
+    scaleBar(pg, [f.x + 8, L.title.y - 9], sheet.scale);
+    if (useSched) plantTable(pg, useSched.rows, [f.x + 6, L.title.y - 17]);
+    teianBand(pg, doc, sheet, L, dateText, logo);
   } else {
     scaleBar(pg, [f.x + 8, f.y + f.h - 10], sheet.scale);
     if (useSched) plantTable(pg, useSched.rows, [f.x + 6, f.y + f.h - 18]);
-    titleBlock(pg, doc, sheet, L, dateText);
+    titleBlock(pg, doc, sheet, L, dateText, logo);
   }
 }
 
@@ -438,18 +447,23 @@ function plantTable(pg, rows, [x0, yb]) {
 }
 
 // 提案の下の帯：新緑と紅葉の線、明朝の題、会社名と日付
-function teianBand(pg, doc, sheet, L, dateText) {
+function teianBand(pg, doc, sheet, L, dateText, logo) {
   const t = L.title;
-  const split = t.x + t.w * 0.62;
-  pg.save().stroke(BRAND.green).lineWidth(0.8).moveTo([t.x, t.y]).lineTo([split, t.y]).doStroke();
-  pg.stroke(BRAND.momiji).moveTo([split, t.y]).lineTo([t.x + t.w, t.y]).doStroke().restore();
+  // 帯の上の縁取り：平行沈線+刻列帯（J-24）を新緑で、両端に起点飾り・終点飾り（J-36・J-37）を紅葉で
+  const sh = 3.2, ends = (JOMON['J-36'].w / JOMON['J-36'].h) * sh;
+  const strip = jomonStrip(pg, 'J-24', [t.x + 4 + ends, t.y - sh / 2], t.w - 8 - ends * 2, sh, BRAND.green);
+  const k = sh / JOMON['J-36'].h;
+  drawJomon(pg, 'J-36', (x, y) => [strip.start - ends + x * k, t.y - sh / 2 + y * k], BRAND.momiji);
+  drawJomon(pg, 'J-37', (x, y) => [strip.end + x * k, t.y - sh / 2 + y * k], BRAND.momiji);
   const who = String(doc.siteName || '').trim().replace(/様?邸$/, '');
   const title = sheet.title && sheet.title !== '平面図' ? sheet.title : '外構プラン';
   const main = who ? `${who}様　${title}` : title;
   const right = t.x + t.w - 4;
   pg.text(fitText(main, 8, t.w - 70), [right - 58, t.y + t.h * 0.66], 8, { align: 'end', hex: C.ink, mincho: true });
   pg.save().stroke(BRAND.bark).lineWidth(0.2).moveTo([right - 54, t.y + 4]).lineTo([right - 54, t.y + t.h - 4]).doStroke().restore();
-  pg.text(sheet.company || '', [right - 50, t.y + t.h * 0.42], 3.6, { hex: BRAND.bark, mincho: true });
-  pg.text(`${dateText}　縮尺 1/${sheet.scale}　${sheet.paper}${sheet.number ? `　${sheet.number}` : ''}`, [right - 50, t.y + t.h * 0.42 + 5.5], 2.2, { hex: C.muted });
-  pg.save().fill(BRAND.momiji).circle([right - 1.5, t.y + 4.5], 1.1).doFill().restore();
+  if (logo) {
+    const lh = 8.5, lw = (logo.w / logo.h) * lh;
+    pg.placeImage(logo.bytes, logo.w, logo.h, right - 50, t.y + 3.2, Math.min(lw, 46), Math.min(lw, 46) / lw * lh);
+  } else pg.text(sheet.company || '', [right - 50, t.y + t.h * 0.42], 3.6, { hex: BRAND.bark, mincho: true });
+  pg.text(`${dateText}　縮尺 1/${sheet.scale}　${sheet.paper}${sheet.number ? `　${sheet.number}` : ''}`, [right - 50, t.y + t.h - 4.5], 2.2, { hex: C.muted });
 }

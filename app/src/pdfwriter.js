@@ -121,6 +121,11 @@ export class Page {
     return this.raw(`q ${m.map(n).join(' ')} cm /${name} Do Q`);
   }
 
+  // JPEG を紙の上の長方形（左上 x, y、幅 w、高さ h、mm）に置く。
+  placeImage(jpegBytes, pxW, pxH, x, y, w, h) {
+    return this.image(jpegBytes, pxW, pxH, this.imageMatrix([x, y + h], [x + w, y + h], [x, y]));
+  }
+
   // 紙の mm の三点（画像の左下・右下・左上が来る所）から cm 行列を作る。
   imageMatrix(bl, br, tl) {
     const P = ([x, y]) => [x * PT, (this.H - y) * PT];

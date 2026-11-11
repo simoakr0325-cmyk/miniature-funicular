@@ -407,3 +407,7 @@ table.est tr.miss td, table.est tr.miss th { color: var(--danger); }
 table.est tfoot th { text-align: right; font-weight: 400; }
 table.est tfoot tr.sum th, table.est tfoot tr.sum td { font-weight: 700; font-size: 0.9375rem; }
 .psec h2 small.kou { margin-left: auto; }
+.bar-logo { height: 23px; width: auto; mix-blend-mode: multiply; flex: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bar-logo { filter: invert(1); mix-blend-mode: screen; } }
+:root[data-theme="dark"] .bar-logo { filter: invert(1); mix-blend-mode: screen; }
+@media (max-width: 760px) { .bar-logo { display: none; } }

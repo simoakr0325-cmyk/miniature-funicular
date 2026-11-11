@@ -2228,6 +2228,20 @@ async function jpegOf(blob) {
   return { bytes: new Uint8Array(await jpg.arrayBuffer()), w, h };
 }
 
+// 山波創苑のロゴ（筆文字）。会社名が山波創苑の図面に入れる。
+let logoP = null;
+function loadLogo() {
+  logoP ??= (async () => {
+    const res = await fetch(new URL('../assets/logo-sansoen.jpg', import.meta.url));
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+    const out = { bytes: new Uint8Array(await blob.arrayBuffer()), w: bmp.width, h: bmp.height };
+    bmp.close?.();
+    return out;
+  })().catch(() => null);
+  return logoP;
+}
+
 async function makePdfFile({ all = false } = {}) {
   const sh = SH.sheetOf(state.doc);
   const sheets = all ? SH.sheetsOf(state.doc).map((_, i) => SH.sheetOf(state.doc, i)) : [sh];
@@ -2244,8 +2258,9 @@ async function makePdfFile({ all = false } = {}) {
       if (blob) images.set(u.blob, await jpegOf(blob));
     }
   }
-  if (all) return new File([plotSheets(state.doc, sheets, { images, species: library })], SH.pdfSetFileName(state.doc), { type: 'application/pdf' });
-  const bytes = plotSheet(state.doc, sh, { images, species: library });
+  const logo = await loadLogo();
+  if (all) return new File([plotSheets(state.doc, sheets, { images, species: library, logo })], SH.pdfSetFileName(state.doc), { type: 'application/pdf' });
+  const bytes = plotSheet(state.doc, sh, { images, species: library, logo });
   return new File([bytes], SH.pdfFileName(state.doc, sh), { type: 'application/pdf' });
 }
 
