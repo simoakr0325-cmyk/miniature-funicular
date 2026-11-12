@@ -46,3 +46,21 @@ test('太陽は南の空にある（北が図の上なら、z が負＝北では
   // 北が図の右（90°）なら、南は図の左（x が負）
   assert.ok(sunDirection(90)[0] < -0.3);
 });
+
+test('太陽の位置：夏至と冬至の正午の高さ、朝は東・夕は西、四角い建物の見分け', async () => {
+  const { sunAt, rectOf, seedOf, rng } = await import('../app/src/scene3d.js');
+  const summer = sunAt({ hour: 12, date: new Date(2026, 5, 21) });
+  const winter = sunAt({ hour: 12, date: new Date(2026, 11, 22) });
+  near(summer.elevation, 77.4, 0.5); // 90 − 36 + 23.4
+  near(winter.elevation, 30.6, 0.5);
+  assert.ok(summer.dir[2] > 0); // 正午は南（図の下 = +z）
+  assert.ok(sunAt({ hour: 7, date: new Date(2026, 2, 21) }).dir[0] > 0.8); // 朝は東
+  assert.ok(sunAt({ hour: 17, date: new Date(2026, 2, 21) }).dir[0] < -0.8); // 夕は西
+  assert.ok(sunAt({ hour: 20, date: new Date(2026, 11, 22) }).elevation >= 9); // 夜も真っ暗にはしない
+  const r = rectOf([[0, 0], [8000, 0], [8000, 5000], [0, 5000]]);
+  assert.deepEqual([r.a, r.b, r.c], [4000, 2500, [4000, 2500]]);
+  assert.equal(rectOf([[0, 0], [8000, 0], [9000, 5000], [0, 5000]]), null);
+  assert.equal(seedOf([100, 200], 'コナラ'), seedOf([100, 200], 'コナラ'));
+  const a = rng(5), b = rng(5);
+  assert.equal(a(), b());
+});

@@ -19,6 +19,7 @@ import * as TR from './terrain.js';
 import { getKou } from './kou.js';
 import * as SP from './species.js';
 import { makeZip } from './zip.js';
+import { sampleDoc } from './sample.js';
 import * as EST from './estimate.js';
 import { fillEstimate, inspectTemplate } from './xlsx.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
@@ -2369,6 +2370,12 @@ $('btn-panel').onclick = () => togglePanel();
 $('cmd-done').onclick = () => (state.sheetMode ? exportPdf('share') : state.ulMode ? exitUlMode() : finishDraft());
 $('btn-sheet').onclick = () => (state.sheetMode ? exitSheetMode() : startSheetMode());
 
+// 見本の庭を開く（今の図は端末に残る）
+function openSample() {
+  openDoc(sampleDoc());
+  toast('見本の庭を開きました。上の「3D」「図面」や、右の「見積書」を試せます');
+}
+
 // ---------- 3D ----------
 
 let viewer = null;
@@ -2394,6 +2401,16 @@ document.querySelectorAll('[data-v3d]').forEach((b) => {
   };
 });
 $('v3d-close').onclick = () => { $('v3d').hidden = true; };
+$('v3d-hour').oninput = (ev) => {
+  const h = Number(ev.target.value);
+  $('v3d-hour-label').textContent = `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+  viewer?.setHour(h);
+};
+$('v3d-person').onclick = (ev) => {
+  const on = ev.currentTarget.getAttribute('aria-pressed') !== 'true';
+  ev.currentTarget.setAttribute('aria-pressed', String(on));
+  viewer?.setPerson(on);
+};
 $('v3d-save').onclick = async () => {
   if (!viewer) return;
   try {
@@ -2465,4 +2482,4 @@ async function start() {
 start();
 
 // 試験と点検のための入口。
-window.nawabari = { state, get view() { return view; }, setTool, placePoint, finishDraft, undo, redo, fitView, select };
+window.nawabari = { state, get view() { return view; }, setTool, placePoint, finishDraft, undo, redo, fitView, select, openSample };

@@ -69,14 +69,14 @@ export function buildParts(doc, { library = [] } = {}) {
         const pts = poly();
         if (pts.length < 3 || Math.abs(polygonArea(pts)) < 1) break;
         const z0 = g(centroid(pts)) + 300; // 基礎の分だけ上げる
-        parts.push({ type: 'prism', kind: 'bldg', pts, z0: z0 - 300, z1: z0 + num(el.props.高さ, 6000), color: COLORS.bldg, roof: COLORS.roof });
+        parts.push({ type: 'prism', kind: 'bldg', pts, z0: z0 - 300, z1: z0 + num(el.props.高さ, 6000), color: COLORS.bldg, roof: COLORS.roof, rect: rectOf(el.pts) });
         break;
       }
       case 'hoso': {
         const pts = poly();
         if (pts.length < 3) break;
         const top = num(el.props.天端, g(centroid(pts)) + 30);
-        parts.push({ type: 'prism', kind: 'hoso', pts, z0: top - 120, z1: top, color: COLORS.hoso[el.props.材料] || COLORS.hoso.土間コンクリート });
+        parts.push({ type: 'prism', kind: 'hoso', pts, z0: top - 120, z1: top, color: COLORS.hoso[el.props.材料] || COLORS.hoso.土間コンクリート, material: el.props.材料 || '土間コンクリート' });
         break;
       }
       case 'shokusaitai': {
@@ -106,6 +106,7 @@ export function buildParts(doc, { library = [] } = {}) {
             z0: base - 100,
             z1: base + (wall ? num(el.props.高さ, 1200) : 120),
             color: wall ? COLORS.wall : COLORS.curb,
+            material: wall ? String(el.props.種類 || '') : '縁石',
           });
         }
         break;
@@ -118,7 +119,7 @@ export function buildParts(doc, { library = [] } = {}) {
         const sp = library.find((s) => s.和名 === String(el.props.樹種 || '').trim());
         const needle = sp?.葉形 === '針葉';
         const color = sp?.常落 === '落葉' ? COLORS.crownDeciduous : sp ? COLORS.crownEvergreen : COLORS.crown;
-        parts.push({ type: 'tree', c, z: g(c), h, r, crownZ: h - cv, crownR: [r, cv], trunkR: Math.min(Math.max(h / 60, 40), 200), color, trunk: COLORS.trunk, needle });
+        parts.push({ type: 'tree', c, z: g(c), h, r, crownZ: h - cv, crownR: [r, cv], trunkR: Math.min(Math.max(h / 60, 40), 200), color, trunk: COLORS.trunk, needle, seed: seedOf(c, el.props.樹種) });
         break;
       }
       case 'shikichi': {
@@ -161,6 +162,57 @@ export function sceneBox(doc) {
     x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
   }
   return { x0, y0, x1, y1 };
+}
+
+// 位置と名前から決まる乱数の種（同じ図はいつも同じ絵になるように）
+export function seedOf([x, y], name = '') {
+  let h = (Math.round(x) * 73856093) ^ (Math.round(y) * 19349663);
+  for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) | 0;
+  return (h >>> 0) || 1;
+}
+
+// 種から 0〜1 の乱数の列を作る
+export function rng(seed) {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+}
+
+// 四角い建物なら、中心・長い方の向き（度）・半分の長さを返す（切妻屋根を載せるため）。四角でなければ null。
+export function rectOf(pts) {
+  if (pts.length !== 4) return null;
+  const e = pts.map((p, i) => [pts[(i + 1) % 4][0] - p[0], pts[(i + 1) % 4][1] - p[1]]);
+  const len = e.map(([x, y]) => Math.hypot(x, y));
+  for (let i = 0; i < 4; i++) {
+    const a = e[i], b = e[(i + 1) % 4];
+    if (Math.abs(a[0] * b[0] + a[1] * b[1]) > 0.02 * len[i] * len[(i + 1) % 4]) return null; // 直角でない
+  }
+  if (Math.abs(len[0] - len[2]) > 0.02 * len[0] || Math.abs(len[1] - len[3]) > 0.02 * len[1]) return null;
+  const long = len[0] >= len[1] ? 0 : 1;
+  const c = [(pts[0][0] + pts[2][0]) / 2, (pts[0][1] + pts[2][1]) / 2];
+  return { c, angle: Math.atan2(e[long][1], e[long][0]), a: len[long] / 2, b: len[1 - long] / 2 };
+}
+
+// 太陽の位置。日付と時刻（時、小数可）と緯度から、高さ（度）と、図の向きに合わせた 3D の単位ベクトルを出す。
+// 赤緯は日付から近似（±23.44°）。north は図の上を 0° とした北の向き（時計回り）。夜は地平線の少し上に留める。
+export function sunAt({ north = 0, hour = 10.5, date = new Date(), lat = 36 } = {}) {
+  const rad = Math.PI / 180;
+  const start = new Date(date.getFullYear(), 0, 0);
+  const N = Math.floor((date - start) / 86400000);
+  const dec = -23.44 * Math.cos(((2 * Math.PI) / 365) * (N + 10)) * rad;
+  const H = 15 * (hour - 12) * rad;
+  const phi = lat * rad;
+  const sinEl = Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H);
+  const elevation = Math.max(Math.asin(sinEl) / rad, 9);
+  // 南から西回りの方位
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
+  const n = north * rad;
+  const south = [-Math.sin(n), Math.cos(n)], west = [-Math.cos(n), -Math.sin(n)];
+  const e = elevation * rad;
+  const hx = south[0] * Math.cos(az) + west[0] * Math.sin(az), hz = south[1] * Math.cos(az) + west[1] * Math.sin(az);
+  return { elevation, azimuth: az / rad, dir: [hx * Math.cos(e), Math.sin(e), hz * Math.cos(e)] };
 }
 
 // 太陽の向き（3D の単位ベクトル）。北の向き（図の上を 0°、時計回り）から、南の空・高さ 50° に置く。

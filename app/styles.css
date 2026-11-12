@@ -411,3 +411,6 @@ table.est tfoot tr.sum th, table.est tfoot tr.sum td { font-weight: 700; font-si
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bar-logo { filter: invert(1); mix-blend-mode: screen; } }
 :root[data-theme="dark"] .bar-logo { filter: invert(1); mix-blend-mode: screen; }
 @media (max-width: 760px) { .bar-logo { display: none; } }
+.v3d-time { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.v3d-time input { width: clamp(90px, 18vw, 180px); accent-color: var(--brand-momiji); }
+.v3d-bar button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
