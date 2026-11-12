@@ -21,6 +21,7 @@ import { JOMON } from './jomon.js';
 import * as SP from './species.js';
 import { makeZip } from './zip.js';
 import { sampleDoc } from './sample.js';
+import * as SYNC from './sync.js';
 import * as EST from './estimate.js';
 import { fillEstimate, inspectTemplate } from './xlsx.js';
 import { pointInPolygon, bulgeThrough, densify } from './geometry.js';
@@ -1038,13 +1039,98 @@ async function saveNow() {
   try {
     await store.saveDoc(state.doc);
     await store.setKV('lastDoc', state.doc.id);
-    $('save-state').textContent = '端末に保存済み';
+    $('save-state').textContent = SYNC.isLinked() ? '端末に保存済み・同期待ち' : '端末に保存済み';
+    scheduleSync();
   } catch (err) {
     $('save-state').textContent = '保存できません';
     toast('端末に保存できませんでした：' + err.message);
   }
   updateUnsynced();
 }
+
+// ---------- オンラインの自動同期 ----------
+
+let syncServer = false; // 同期のサーバがある所で開いているか
+let syncTimer = 0, syncing = false;
+const syncable = () => SYNC.isLinked() && state.doc.siteId !== 'MIHON' && (live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0);
+
+// 直してから少し待って送る（続けて直している間は送らない）
+function scheduleSync(delay = 15000) {
+  if (!SYNC.isLinked()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncNow(), delay);
+}
+
+async function syncNow({ loud = false } = {}) {
+  if (!syncable() || syncing) return;
+  // 引いている・描いている最中は、終わるまで待つ
+  if (gesture || state.draft?.pts.length) return scheduleSync(4000);
+  syncing = true;
+  clearTimeout(syncTimer);
+  const id = state.doc.id;
+  try {
+    const { doc, pulled } = await SYNC.syncDoc(() => state.doc);
+    if (state.doc.id !== id) return; // 送っている間に別の現場へ移った
+    if (pulled > 0 && !gesture && !state.draft?.pts.length) {
+      state.doc = doc;
+      pruneSelection();
+      await store.saveDoc(state.doc);
+      ensureBlobUrls();
+      render();
+      renderPanel();
+      updateSiteLabel();
+      toast(`ほかの端末の変更を ${pulled} 件取り込みました`);
+    } else if (loud) toast('同期しました');
+    $('save-state').textContent = '同期済み';
+  } catch (err) {
+    $('save-state').textContent = navigator.onLine === false ? '端末に保存済み（電波なし）' : '端末に保存済み（同期できず）';
+    if (err.status === 401) toast('合言葉が違うようです。「Obsidian」の欄の「オンラインの自動同期」でつなぎ直してください');
+    else if (loud) toast('同期できませんでした：' + err.message);
+  } finally {
+    syncing = false;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncNow();
+});
+window.addEventListener('online', () => syncNow());
+setInterval(() => { if (document.visibilityState === 'visible') syncNow(); }, 60000);
+
+function renderSyncSection() {
+  $('sync-sec').hidden = !syncServer;
+  const on = SYNC.isLinked();
+  $('sync-link').hidden = on;
+  $('sync-on').hidden = !on;
+  $('sync-state').textContent = on
+    ? 'つながっています。直すと自動でサーバに送り、ほかの端末の変更も自動で取り込みます（電波が無い間は端末に貯めます）。'
+    : '合言葉を入れると、この端末の図をサーバに預け、PC と iPhone で自動で揃えます。';
+}
+$('sync-connect').onclick = async () => {
+  try {
+    await SYNC.link($('sync-key').value);
+    $('sync-key').value = '';
+    renderSyncSection();
+    toast('つながりました');
+    syncNow({ loud: true });
+  } catch (err) {
+    toast(err.message);
+  }
+};
+$('sync-now').onclick = () => syncNow({ loud: true });
+$('sync-off').onclick = async () => {
+  if (!confirm('この端末の合言葉を消します。端末の中の図とサーバの図は残ります。よろしいですか。')) return;
+  await SYNC.unlink();
+  renderSyncSection();
+};
+$('sync-copy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(`${location.origin}/#k=${SYNC.keyOf()}`);
+    toast('リンクをコピーしました。このリンクを開いた端末は、合言葉が入った状態でつながります（人に渡さないでください）');
+  } catch {
+    toast('コピーできませんでした');
+  }
+};
 
 async function updateUnsynced() {
   const synced = await store.getKV('synced:' + state.doc.id).catch(() => null);
@@ -1762,7 +1848,37 @@ async function showSites() {
     }
   };
   showBlobUsage();
+  showRemoteSites(new Set(docs.map((d) => d.id)));
   if (!$('dlg-site').open) $('dlg-site').showModal();
+}
+
+// サーバにあって、この端末に無い図（別の端末で作った現場）
+async function showRemoteSites(have) {
+  $('remote-sec').hidden = true;
+  if (!SYNC.isLinked()) return;
+  try {
+    const list = (await SYNC.listRemote()).filter((d) => !have.has(d.id));
+    if (!list.length) return;
+    $('remote-sec').hidden = false;
+    $('remote-list').innerHTML = list.map((d) => `
+      <li><button type="button" class="pick" data-remote="${d.id}">
+        <b>${escapeHtml(d.siteName || '無題')}</b><span>${escapeHtml(d.siteId || '')}</span>
+        <small>${new Date(d.updatedAt).toLocaleString('ja-JP')}・部材 ${d.count}</small>
+      </button></li>`).join('');
+    $('remote-list').onclick = async (ev) => {
+      const b = ev.target.closest('[data-remote]');
+      if (!b) return;
+      try {
+        openDoc(await SYNC.fetchRemote(b.dataset.remote));
+        $('dlg-site').close();
+        syncNow();
+      } catch (err) {
+        toast('取り込めませんでした：' + err.message);
+      }
+    };
+  } catch {
+    // 電波が無いときは出さない
+  }
 }
 
 // 端末の中の下図の画像のうち、どの現場の図（元に戻す履歴も含む）からも使われていないものを消す。
@@ -1824,6 +1940,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '
 
 async function showVault() {
   await saveNow();
+  renderSyncSection();
   const canFolder = vault.canUseFolder();
   $('vault-folder').hidden = !canFolder;
   $('files-note').textContent = canFolder
@@ -2548,6 +2665,14 @@ async function start() {
   } catch (err) {
     toast('前の図を開けませんでした：' + err.message);
   }
+  // リンクに合言葉が付いていれば覚えて、リンクからは消す
+  await SYNC.loadConfig();
+  const hk = /[#&]k=([A-Za-z0-9_-]{8,})/.exec(location.hash);
+  if (hk) {
+    history.replaceState(null, '', location.pathname + location.search);
+    await SYNC.link(hk[1]).then(() => toast('同期につながりました')).catch((err) => toast(err.message));
+  }
+  SYNC.ping().then((p) => { syncServer = p.server; if (p.server && SYNC.isLinked()) syncNow(); });
   await loadLibrary().catch(() => {});
   await loadKoushu().catch(() => {});
   openDoc(doc || createDoc());

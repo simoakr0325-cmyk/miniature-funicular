@@ -140,6 +140,7 @@
   <form method="dialog" class="dlg-body">
     <h2>現場</h2>
     <ul id="site-list" class="list"></ul>
+    <div id="remote-sec" hidden><h3>サーバにあって、この端末に無い図</h3><ul id="remote-list" class="list"></ul></div>
     <div class="row">
       <button id="btn-new-site" type="button" class="primary">新しい現場</button>
       <button value="close">閉じる</button>
@@ -151,6 +152,19 @@
 <dialog id="dlg-vault" class="dlg">
   <form method="dialog" class="dlg-body">
     <h2>Obsidian と受け渡す</h2>
+    <section id="sync-sec" class="vsec" hidden>
+      <h3>オンラインの自動同期</h3>
+      <p class="muted small" id="sync-state"></p>
+      <div id="sync-link" class="row">
+        <input id="sync-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="合言葉" aria-label="合言葉">
+        <button id="sync-connect" type="button" class="primary">つなぐ</button>
+      </div>
+      <div id="sync-on" class="row" hidden>
+        <button id="sync-now" type="button" class="primary">今すぐ同期</button>
+        <button id="sync-copy" type="button">ほかの端末に渡すリンクをコピー</button>
+        <button id="sync-off" type="button" class="danger">この端末のつなぎを外す</button>
+      </div>
+    </section>
     <section id="vault-folder" class="vsec" hidden>
       <p class="muted">vault の中の、縄張りノートを置くフォルダを一度選びます。以後はそのフォルダへ直接書き込みます。</p>
       <p class="folder-line"><span>フォルダ</span><b id="folder-name">未選択</b>

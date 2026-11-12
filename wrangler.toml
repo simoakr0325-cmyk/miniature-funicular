@@ -1,0 +1,16 @@
+# 縄張り台を Cloudflare Workers に置く設定。アプリ（app/）の配信と、同期の保管庫（/api/）を一つの Worker で受ける。
+# 置き方は docs/sync.md。
+name = "nawabari"
+main = "server/worker.js"
+compatibility_date = "2026-06-01"
+
+[assets]
+directory = "./app"
+binding = "ASSETS"
+# /api/ だけ Worker を通す。ほかはアプリのファイルをそのまま返す。
+run_worker_first = ["/api/*"]
+
+# 保管庫（KV）。id は「npx wrangler kv namespace create STORE」で出た値に置き換える。
+[[kv_namespaces]]
+binding = "STORE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

@@ -14,7 +14,7 @@ npm start
 ```
 
 `http://localhost:8080/` を開きます。外部ライブラリもビルドも要りません（Node.js 18 以上）。
-iPhone で使うには、`app/` を HTTPS の置き場（Cloudflare Pages など）に置き、Safari で開いて「ホーム画面に追加」します。
+iPhone で使うには、Cloudflare Workers に置きます（アプリの配信と、PC・iPhone のオンライン自動同期を一つの URL で）。置き方は [docs/sync.md](docs/sync.md)。置いた URL を Safari で開いて「ホーム画面に追加」します。
 
 ## 試験
 
