@@ -30,6 +30,8 @@ if (process.env.SYNC_KEY) {
 
 createServer(async (req, res) => {
   if (api && req.url.startsWith('/api/')) return api(req, res).catch((err) => res.writeHead(500).end(String(err)));
+  // 同期なしで起動したとき：アプリの「同期のサーバはあるか」の問い合わせに「無い」と答える
+  if (req.url.startsWith('/api/ping')) return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":false}');
   try {
     let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, path);
