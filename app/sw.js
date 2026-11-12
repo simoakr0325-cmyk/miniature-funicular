@@ -1,10 +1,10 @@
 // 電波のない現場でも開けるよう、アプリ一式を端末に置いておく。
 // 中身を変えたら VERSION を上げる。
-const VERSION = 'nawabari-v22';
+const VERSION = 'nawabari-v23';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-512.png',
   'src/main.js', 'src/model.js', 'src/geometry.js', 'src/render.js', 'src/hit.js', 'src/storage.js', 'src/vault.js', 'src/obsidian.js',
-  'src/underlay.js', 'src/sheet.js', 'src/plot.js', 'src/pdfwriter.js', 'src/svgwriter.js', 'src/dxf.js', 'src/dxfread.js', 'src/sjis.js', 'src/survey.js', 'src/latlng.js', 'src/gsimap.js', 'src/terrain.js', 'src/species.js', 'src/zip.js', 'src/kou.js', 'src/planting.js', 'src/jomon.js', 'src/sample.js', 'assets/logo-sansoen.jpg', 'src/estimate.js', 'src/xlsx.js', 'templates/mitsumori.xlsx', 'src/scene3d.js', 'src/view3d.js', 'vendor/three/three.module.min.js', 'vendor/three/three.core.min.js', 'vendor/three/OrbitControls.js', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
+  'src/underlay.js', 'src/sheet.js', 'src/plot.js', 'src/pdfwriter.js', 'src/svgwriter.js', 'src/dxf.js', 'src/dxfread.js', 'src/sjis.js', 'src/survey.js', 'src/latlng.js', 'src/gsimap.js', 'src/terrain.js', 'src/species.js', 'src/zip.js', 'src/kou.js', 'src/planting.js', 'src/jomon.js', 'src/sample.js', 'assets/logo-sansoen.jpg', 'assets/tex/araidashi_diff.jpg', 'assets/tex/araidashi_nor.jpg', 'assets/tex/bark_diff.jpg', 'assets/tex/bark_nor.jpg', 'assets/tex/concrete_diff.jpg', 'assets/tex/concrete_nor.jpg', 'assets/tex/deck_diff.jpg', 'assets/tex/deck_nor.jpg', 'assets/tex/grass_nor.jpg', 'assets/tex/gravel_diff.jpg', 'assets/tex/gravel_nor.jpg', 'assets/tex/ground_diff.jpg', 'assets/tex/ground_nor.jpg', 'assets/tex/paving_diff.jpg', 'assets/tex/paving_nor.jpg', 'assets/tex/plaster_diff.jpg', 'assets/tex/plaster_nor.jpg', 'assets/tex/roof_diff.jpg', 'assets/tex/roof_nor.jpg', 'assets/tex/sky.jpg', 'assets/tex/slab_diff.jpg', 'assets/tex/slab_nor.jpg', 'assets/tex/soil_diff.jpg', 'assets/tex/soil_nor.jpg', 'src/estimate.js', 'src/xlsx.js', 'templates/mitsumori.xlsx', 'src/scene3d.js', 'src/view3d.js', 'vendor/three/three.module.min.js', 'vendor/three/three.core.min.js', 'vendor/three/OrbitControls.js', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   // 日本語の PDF でよく使う文字の対応表。ほかは使ったときに端末へ置いていく。
   'vendor/pdfjs/cmaps/UniJIS-UCS2-H.bcmap', 'vendor/pdfjs/cmaps/UniJIS-UTF16-H.bcmap', 'vendor/pdfjs/cmaps/90ms-RKSJ-H.bcmap',
   'vendor/pdfjs/cmaps/Adobe-Japan1-UCS2.bcmap',

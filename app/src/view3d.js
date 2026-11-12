@@ -40,6 +40,20 @@ const TEX = {
   石: { size: 1.0, bump: 0.02, rough: 0.95, draw: (c, r, s) => concrete(c, r, s, '#9f998c', 34) },
 };
 
+// 写真の質感（Poly Haven、CC0）。file は app/assets/tex/ の名前、size は一枚が実際の何 m か。
+// 読めなかったときは、上の「描いて作る質感」に戻る。
+const PHOTO = {
+  // nor だけ：色は描いた質感のまま、凹凸だけ写真から借りる
+  芝: { file: 'grass', size: 1.8, norOnly: true }, 人工芝: { file: 'grass', size: 1.2, norOnly: true },
+  地面: { file: 'ground', size: 3.2, tint: '#dfe6c8' },
+  砂利: { file: 'gravel', size: 1.1 }, 防草シート砂利敷: { file: 'gravel', size: 1.1, tint: '#ece8df' }, 洗い出し: { file: 'araidashi', size: 1.3 },
+  土間コンクリート: { file: 'concrete', size: 3.0 }, ウッドデッキ: { file: 'deck', size: 1.5, tint: '#ead9c6' }, インターロッキング: { file: 'paving', size: 1.3, tint: '#f0dcc8' },
+  タイル: { file: 'slab', size: 1.2, tint: '#f6ead8' }, 平板: { file: 'slab', size: 1.2, tint: '#e9e6df' },
+  屋根: { file: 'roof', size: 2.2 }, 外壁: { file: 'plaster', size: 3.0 }, 土: { file: 'soil', size: 1.6 }, 幹: { file: 'bark', size: 0.6 },
+};
+// 空の写真の中で、太陽がある向き（横の位置 0〜1）
+const SKY_SUN_U = 0.605;
+
 function grass(c, r, s, cols) {
   c.fillStyle = cols[0];
   c.fillRect(0, 0, s, s);
@@ -144,6 +158,7 @@ export class Viewer3D {
     this.doc = doc;
     this.library = library;
     if (!this.renderer) this.init();
+    await this.loadPhotos();
     this.build();
     this.resize();
     this.view('bird');
@@ -192,6 +207,32 @@ export class Viewer3D {
     this.scene.remove(this.root);
   }
 
+  // 写真の質感と空を読む（一度だけ）。読めないものは描いて作る質感のまま。
+  async loadPhotos() {
+    if (this.photos) return;
+    this.photos = new Map();
+    const loader = new THREE.TextureLoader();
+    const base = new URL('../assets/tex/', import.meta.url).href;
+    const get = (file) => loader.loadAsync(base + file).catch(() => null);
+    const files = [...new Set(Object.values(PHOTO).map((p) => p.file))];
+    const norOnly = new Set(Object.values(PHOTO).filter((p) => p.norOnly).map((p) => p.file));
+    const maps = await Promise.all(files.flatMap((f) => [norOnly.has(f) ? null : get(`${f}_diff.jpg`), get(`${f}_nor.jpg`)]));
+    const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    files.forEach((f, i) => {
+      const map = maps[i * 2], nor = maps[i * 2 + 1];
+      if (!map && !nor) return;
+      for (const t of [map, nor]) if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; }
+      if (map) map.colorSpace = THREE.SRGBColorSpace;
+      this.photos.set(f, { map, nor });
+    });
+    this.skyPhoto = await get('sky.jpg');
+    if (this.skyPhoto) {
+      this.skyPhoto.mapping = THREE.EquirectangularReflectionMapping;
+      this.skyPhoto.colorSpace = THREE.SRGBColorSpace;
+      this.skyEnv = this.pmrem.fromEquirectangular(this.skyPhoto).texture;
+    }
+  }
+
   // 質感のテクスチャ（色と凹凸）。一度作ったら使い回す。
   tex(name) {
     if (this.texCache.has(name)) return this.texCache.get(name);
@@ -215,6 +256,25 @@ export class Viewer3D {
 
   // 質感つきの素材。色を掛けて調子を変えられる。
   matOf(name, { tint = '#ffffff', ...opts } = {}) {
+    const ph = PHOTO[name] && this.photos?.get(PHOTO[name].file);
+    if (ph && PHOTO[name].norOnly) {
+      // 色は描いた質感、凹凸は写真
+      const key = 'nor:' + name;
+      if (!this.texCache.has(key)) { const c = ph.nor.clone(); c.repeat.set(1 / PHOTO[name].size, 1 / PHOTO[name].size); c.needsUpdate = true; this.texCache.set(key, c); }
+      const t = this.tex(name);
+      return new THREE.MeshStandardMaterial({ map: t.map, normalMap: this.texCache.get(key), color: tint, roughness: t.def.rough, metalness: 0, ...opts });
+    }
+    if (ph && ph.map) {
+      // 写真の質感。同じ写真を大きさ違いで使うので、写しを作って繰り返しの幅だけ変える。
+      const key = 'photo:' + name;
+      if (!this.texCache.has(key)) {
+        const mk = (t) => { if (!t) return null; const c = t.clone(); c.repeat.set(1 / PHOTO[name].size, 1 / PHOTO[name].size); c.needsUpdate = true; return c; };
+        this.texCache.set(key, { map: mk(ph.map), nor: mk(ph.nor) });
+      }
+      const t = this.texCache.get(key);
+      const col = new THREE.Color(PHOTO[name].tint || '#ffffff').multiply(new THREE.Color(tint));
+      return new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.nor, color: col, roughness: TEX[name]?.rough ?? 0.95, metalness: 0, ...opts });
+    }
     const t = this.tex(name);
     return new THREE.MeshStandardMaterial({
       map: t.map, color: tint, roughness: t.def.rough, metalness: 0,
@@ -305,6 +365,23 @@ export class Viewer3D {
     c.fillRect(0, 0, 8, 256);
     this.skyTex?.dispose();
     this.envTex?.dispose();
+    this.scene.fog = new THREE.Fog(horizon, this.span * 2.2 + 30, this.span * 7 + 160);
+    if (this.skyPhoto && low < 0.5) {
+      // 昼：空の写真を、写真の中の太陽が今の太陽の向きに来るよう回して使う
+      const rot = (SKY_SUN_U - 0.5) * Math.PI * 2 - Math.atan2(s.dir[2], s.dir[0]);
+      this.scene.background = this.skyPhoto;
+      this.scene.environment = this.skyEnv;
+      this.scene.backgroundRotation.set(0, rot, 0);
+      this.scene.environmentRotation.set(0, rot, 0);
+      this.scene.backgroundIntensity = lerp(1, 0.85, low * 2);
+      this.scene.environmentIntensity = lerp(0.9, 0.75, low * 2);
+      this.scene.fog.color.set('#cfdbe6');
+      this.render();
+      return;
+    }
+    this.scene.backgroundRotation.set(0, 0, 0);
+    this.scene.environmentRotation.set(0, 0, 0);
+    this.scene.backgroundIntensity = 1;
     this.skyTex = new THREE.CanvasTexture(cv);
     this.skyTex.mapping = THREE.EquirectangularReflectionMapping;
     this.skyTex.colorSpace = THREE.SRGBColorSpace;
@@ -312,7 +389,6 @@ export class Viewer3D {
     this.envTex = this.pmrem.fromEquirectangular(this.skyTex).texture;
     this.scene.environment = this.envTex;
     this.scene.environmentIntensity = lerp(0.85, 1.0, low);
-    this.scene.fog = new THREE.Fog(horizon, this.span * 2.2 + 30, this.span * 7 + 160);
     this.render();
   }
 
@@ -534,7 +610,7 @@ export class Viewer3D {
     const g = new THREE.Group();
     const r = rng(p.seed || 1);
     const H = M(p.h), R = M(p.r);
-    const trunkMat = this.mat(p.trunk, { roughness: 1 });
+    const trunkMat = this.photos?.get('bark') ? this.matOf('幹') : this.mat(p.trunk, { roughness: 1 });
     const tone = new THREE.Color(p.color).offsetHSL((r() - 0.5) * 0.03, (r() - 0.5) * 0.08, (r() - 0.5) * 0.06);
     const leaf = (k) => this.mat(tone.clone().multiplyScalar(k), { flatShading: true, roughness: 1 });
     if (p.needle) {
