@@ -41,6 +41,10 @@
       <g id="scene"></g>
       <g id="overlay"></g>
     </svg>
+    <div id="loupe" class="loupe" hidden aria-hidden="true">
+      <svg id="loupe-svg"><use href="#underlays"/><use href="#scene"/><use href="#overlay"/></svg>
+      <span id="loupe-read" class="loupe-read"></span>
+    </div>
     <div id="empty-hint" class="empty-hint" hidden>
       <svg class="empty-mark" id="empty-mark" viewBox="0 0 130 130" aria-hidden="true"></svg>
       <p class="empty-title">どこから始めますか</p>
@@ -63,7 +67,8 @@
       <button type="button" id="z-in" title="寄る" aria-label="寄る">＋</button>
       <button type="button" id="z-out" title="引く" aria-label="引く">−</button>
       <button type="button" id="btn-fit" title="全体を見る（F）" aria-label="全体を見る"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
-      <button type="button" id="z-grid" aria-pressed="true" title="方眼に吸着（G）" aria-label="方眼に吸着"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7h14M3 13h14M7 3v14M13 3v14"/></svg></button>
+      <button type="button" id="z-grid" aria-pressed="false" title="方眼に吸着（G）" aria-label="方眼に吸着"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7h14M3 13h14M7 3v14M13 3v14"/></svg></button>
+      <button type="button" id="z-pts" aria-pressed="true" title="部材の角・下図の点に吸着（K）" aria-label="角に吸着"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16V6h10"/><rect x="11" y="3" width="6" height="6"/></svg></button>
       <button type="button" id="z-help" title="操作の早見（?）" aria-label="操作の早見">？</button>
     </div>
     <div id="coord-readout" class="coord-readout" hidden></div>
@@ -105,9 +110,12 @@
     <table class="keys"><tbody>
       <tr><th>道具</th><td><kbd>V</kbd> 選ぶ　<kbd>S</kbd> 敷地　<kbd>B</kbd> 建物　<kbd>P</kbd> 舗装　<kbd>L</kbd> 植栽帯　<kbd>T</kbd> 樹木　<kbd>R</kbd> 景石　<kbd>W</kbd> 塀　<kbd>C</kbd> 縁石　<kbd>H</kbd> 高さ点　<kbd>D</kbd> 寸法　<kbd>X</kbd> 文字</td></tr>
       <tr><th>描く</th><td>点を押す／数字を打って <kbd>Enter</kbd> で長さ（<code>3000,90</code> で角度も）／<kbd>Enter</kbd> で閉じる／<kbd>Backspace</kbd> で一点戻る／<kbd>Shift</kbd> で 45°／<kbd>Alt</kbd> で吸着なし</td></tr>
+      <tr><th>指で正確に</th><td>押したまま少し待つと虫眼鏡。指を動かして合わせ、離した所に置く（角を引くときも出る）</td></tr>
+      <tr><th>吸着</th><td>右下の方眼ボタン・<kbd>G</kbd> で方眼に吸着（既定は切）／角ボタン・<kbd>K</kbd> で部材の角・下図の点に吸着</td></tr>
+      <tr><th>少し動かす</th><td>選んだ部材・角を矢印キーで 10 mm（<kbd>Shift</kbd> 100 mm・<kbd>Alt</kbd> 1 mm）</td></tr>
       <tr><th>選ぶ</th><td>押す／何もない所を引いて範囲（指は長押ししてから）／<kbd>Shift</kbd>＋押すで足す／<kbd>Ctrl</kbd>+<kbd>A</kbd> で全部</td></tr>
       <tr><th>直す</th><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> 戻す／<kbd>Ctrl</kbd>+<kbd>Y</kbd> やり直す／<kbd>Ctrl</kbd>+<kbd>D</kbd> 複製／<kbd>Delete</kbd> 削除／辺の丸を <kbd>Shift</kbd>＋引くと曲がる</td></tr>
-      <tr><th>画面</th><td>右ボタン・<kbd>Space</kbd>＋引く・二本指で動かす／ホイール・つまむで寄る／<kbd>F</kbd> 全体／<kbd>G</kbd> 方眼／<kbd>Esc</kbd> 取消</td></tr>
+      <tr><th>画面</th><td>右ボタン・<kbd>Space</kbd>＋引く・二本指で動かす／ホイール・つまむで寄る／<kbd>F</kbd> 全体／<kbd>Esc</kbd> 取消</td></tr>
     </tbody></table>
     <div class="row end"><button value="close">閉じる</button></div>
   </form>

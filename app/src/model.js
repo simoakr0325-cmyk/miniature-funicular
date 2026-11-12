@@ -51,7 +51,7 @@ export function createDoc({ siteId = '', siteName = '' } = {}) {
     siteName,
     createdAt: t,
     updatedAt: t,
-    settings: { grid: 100, gridOn: true, hiddenLayers: [] },
+    settings: { grid: 100, gridOn: true, snapGrid: false, snapPts: true, hiddenLayers: [] },
     elements: [],
     underlays: [],
   };

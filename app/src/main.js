@@ -91,7 +91,8 @@ function render() {
     $('empty-hint').hidden = live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0 || !!state.draft || !!state.ulMode || state.sheetMode;
     $('btn-undo').disabled = !undoStack.length;
     $('btn-redo').disabled = !redoStack.length;
-    $('z-grid').setAttribute('aria-pressed', String(!!state.doc.settings.gridOn));
+    $('z-grid').setAttribute('aria-pressed', String(!!state.doc.settings.snapGrid));
+    $('z-pts').setAttribute('aria-pressed', String(state.doc.settings.snapPts !== false));
     placeSelTools(v);
   });
 }
@@ -454,8 +455,10 @@ function snapAt(sp, e, exclude) {
     ? { p: currentView().toW(sp), type: 'free' }
     : findSnap(live(state.doc), currentView(), sp, {
         grid: state.doc.settings.grid,
-        gridOn: state.doc.settings.gridOn,
-        extra: d ? [...d.pts, ...underlaySnapPoints()] : underlaySnapPoints(),
+        gridOn: !!state.doc.settings.snapGrid,
+        pts: state.doc.settings.snapPts !== false,
+        draft: d ? d.pts : [],
+        extra: underlaySnapPoints(),
         exclude,
       });
   if (e.shiftKey && d && d.pts.length && s.type !== 'vertex') s.p = orthoConstrain(d.pts.at(-1), s.p);
@@ -468,6 +471,7 @@ svg.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, sp);
   if (pointers.size === 2) {
     clearTimeout(gesture?.hold);
+    hideLoupe();
     if (gesture?.type === 'box') state.box = null;
     if (gesture?.before) {
       restore(gesture.before);
@@ -543,8 +547,76 @@ svg.addEventListener('pointerdown', (e) => {
     }
     return;
   }
-  gesture = { type: 'place', start: sp, view0: { ...view } };
+  const g = { type: 'place', start: sp, view0: { ...view } };
+  if (e.pointerType !== 'mouse') {
+    g.hold = setTimeout(() => {
+      if (gesture !== g || pointers.size !== 1) return;
+      g.precise = true;
+      preciseAt(g.start, e);
+    }, 260);
+  }
+  gesture = g;
 });
+
+// 指で位置を合わせる：指の下の点を虫眼鏡に映し、吸着した先を示す。
+function preciseAt(sp, e) {
+  const s = snapAt(sp, e);
+  if (state.draft) state.draft.cursor = s.p;
+  state.snap = s.type === 'free' ? null : s;
+  renderOverlayOnly();
+  showLoupe(sp, s.p);
+  return s;
+}
+const LOUPE = { size: 136, zoom: 3 };
+function showLoupe(sp, w) {
+  const box = $('loupe');
+  const st = $('stage').getBoundingClientRect();
+  const half = LOUPE.size / 2, r = half / LOUPE.zoom;
+  // 指で隠れないよう指の上に。上が足りなければ横に。
+  let x = sp[0] - half, y = sp[1] - LOUPE.size - 56;
+  if (y < 4) { y = Math.max(4, sp[1] - half); x = sp[0] + 60 + LOUPE.size < st.width ? sp[0] + 60 : sp[0] - 60 - LOUPE.size; }
+  x = Math.min(Math.max(4, x), st.width - LOUPE.size - 4);
+  box.style.left = `${x}px`;
+  box.style.top = `${y}px`;
+  // 吸着したなら、その点を真ん中に
+  const c = w ? currentView().toS(w) : sp;
+  $('loupe-svg').setAttribute('viewBox', `${c[0] - r} ${c[1] - r} ${2 * r} ${2 * r}`);
+  $('loupe-read').textContent = w && state.draft?.pts.length ? `${Math.round(dist(state.draft.pts.at(-1), w))} mm` : '';
+  box.hidden = false;
+}
+const hideLoupe = () => { $('loupe').hidden = true; };
+
+// 矢印キーで少しずつ動かす（角を選んでいればその角、ほかは選んだ部材）。
+function nudge(key, step) {
+  const v = currentView();
+  const a = v.toW([0, 0]), b = v.toW([1, 1]);
+  const sx = Math.sign(b[0] - a[0]) || 1, sy = Math.sign(b[1] - a[1]) || 1;
+  const dx = key === 'ArrowLeft' ? -step * sx : key === 'ArrowRight' ? step * sx : 0;
+  const dy = key === 'ArrowUp' ? -step * sy : key === 'ArrowDown' ? step * sy : 0;
+  if (state.vsel) {
+    const el = byId(state.vsel.id);
+    if (!el) return;
+    const i = state.vsel.i;
+    commit(() => replaceEl({ ...el, pts: el.pts.map((p, k) => (k === i ? [round(p[0] + dx), round(p[1] + dy)] : p)) }));
+    return;
+  }
+  const els = selectedEls();
+  if (els.length) commit(() => els.forEach((el) => replaceEl(moveElement(el, dx, dy))));
+}
+
+function toggleSnapGrid() {
+  const s = state.doc.settings;
+  s.snapGrid = !s.snapGrid;
+  if (s.snapGrid) s.gridOn = true;
+  toast(s.snapGrid ? `方眼（${s.grid} mm）に吸着します` : '方眼に吸着しません');
+  changed();
+}
+function toggleSnapPts() {
+  const s = state.doc.settings;
+  s.snapPts = s.snapPts === false;
+  toast(s.snapPts ? '部材の角・下図の点に吸着します' : '角にも吸着しません（押した所にそのまま置く）');
+  changed();
+}
 
 svg.addEventListener('pointermove', (e) => {
   const sp = spOf(e);
@@ -561,7 +633,12 @@ svg.addEventListener('pointermove', (e) => {
     render();
     return;
   }
+  if (gesture?.type === 'place' && gesture.precise) {
+    preciseAt(sp, e);
+    return;
+  }
   if (gesture?.type === 'place' && dist(sp, gesture.start) > 6) {
+    clearTimeout(gesture.hold);
     gesture = { type: 'pan', start: gesture.start, view0: gesture.view0 };
   }
   if (gesture?.type === 'pan') {
@@ -580,7 +657,7 @@ svg.addEventListener('pointermove', (e) => {
   }
   if (gesture?.type === 'sheetmove') {
     gesture.moved = true;
-    const g = state.doc.settings.gridOn ? state.doc.settings.grid : 1;
+    const g = state.doc.settings.snapGrid ? state.doc.settings.grid : 1;
     const snap = (val) => Math.round(val / g) * g;
     setSheet({
       cx: snap(gesture.orig[0] + (sp[0] - gesture.start[0]) / view.scale),
@@ -602,7 +679,7 @@ svg.addEventListener('pointermove', (e) => {
     gesture.moved = true;
     const w = v.toW(sp);
     let dx = w[0] - gesture.startW[0], dy = w[1] - gesture.startW[1];
-    if (state.doc.settings.gridOn && !e.altKey) {
+    if (state.doc.settings.snapGrid && !e.altKey) {
       const g = state.doc.settings.grid;
       dx = Math.round(dx / g) * g;
       dy = Math.round(dy / g) * g;
@@ -635,6 +712,7 @@ svg.addEventListener('pointermove', (e) => {
     }
     state.snap = s.type === 'vertex' ? s : null;
     render();
+    if (e.pointerType !== 'mouse') showLoupe(sp, s.p);
     return;
   }
   updateReadout(e.pointerType === 'touch' ? null : v.toW(sp));
@@ -658,6 +736,7 @@ function endPointer(e) {
   }
   if (pointers.size) return;
   clearTimeout(g.hold);
+  hideLoupe();
   gesture = null;
   if (e.type === 'pointercancel') {
     if (state.box) {
@@ -828,9 +907,13 @@ document.addEventListener('keydown', (e) => {
       break;
     case '?': $('dlg-help').showModal(); break;
     case 'f': case 'F': fitView(); break;
-    case 'g': case 'G':
-      state.doc.settings.gridOn = !state.doc.settings.gridOn;
-      changed();
+    case 'g': case 'G': toggleSnapGrid(); break;
+    case 'k': case 'K': toggleSnapPts(); break;
+    case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown':
+      if (state.tool === 'select' && !state.sheetMode && !state.ulMode && (state.sel.length || state.vsel)) {
+        e.preventDefault();
+        nudge(e.key, e.shiftKey ? 100 : e.altKey ? 1 : 10);
+      }
       break;
     default: {
       // 道具のキー（V・S・B・P・L・T・R・W・C・H・D・X）
@@ -965,10 +1048,14 @@ function renderPanel() {
     <section class="psec">
       <h2>方眼</h2>
       <div class="row">
-        <label class="check"><input type="checkbox" id="grid-on" ${d.settings.gridOn ? 'checked' : ''}> 方眼に吸着</label>
-        <select id="grid-step" aria-label="方眼の間隔">${[10, 50, 100, 250, 500, 1000].map((g) => `<option value="${g}"${g === d.settings.grid ? ' selected' : ''}>${g} mm</option>`).join('')}</select>
+        <label class="check"><input type="checkbox" id="grid-show" ${d.settings.gridOn ? 'checked' : ''}> 方眼を出す</label>
+        <select id="grid-step" aria-label="方眼の間隔">${[1, 5, 10, 50, 100, 250, 500, 1000].map((g) => `<option value="${g}"${g === d.settings.grid ? ' selected' : ''}>${g} mm</option>`).join('')}</select>
       </div>
-      <p class="muted small">Alt を押しながらだと吸着しません。Shift で 45° 刻み。</p>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="grid-on" ${d.settings.snapGrid ? 'checked' : ''}> 方眼に吸着</label>
+        <label class="check"><input type="checkbox" id="pts-on" ${d.settings.snapPts !== false ? 'checked' : ''}> 角・下図の点に吸着</label>
+      </div>
+      <p class="muted small">どちらも切ると、押した所にそのまま置きます。指では、押したまま少し待つと虫眼鏡が出て、指を動かして位置を合わせ、離した所に置きます。PC では Alt を押しながらで吸着なし、Shift で 45° 刻み。選んだ部材や角は矢印キーで 10 mm（Shift 100 mm・Alt 1 mm）ずつ動きます。</p>
     </section>
     <section class="psec">
       <h2>画層</h2>
@@ -987,7 +1074,9 @@ function renderPanel() {
   bindTerrainPanel();
   bindSpeciesPanel();
   if ($('est-open')) $('est-open').onclick = showEstimate;
-  $('grid-on').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
+  $('grid-show').onchange = (ev) => { d.settings.gridOn = ev.target.checked; changed({ panel: false }); };
+  $('grid-on').onchange = (ev) => { d.settings.snapGrid = ev.target.checked; if (ev.target.checked) d.settings.gridOn = true; changed(); };
+  $('pts-on').onchange = (ev) => { d.settings.snapPts = ev.target.checked; changed({ panel: false }); };
   $('grid-step').onchange = (ev) => { d.settings.grid = Number(ev.target.value); changed({ panel: false }); };
   for (const cb of p.querySelectorAll('[data-layer]')) {
     cb.onchange = () => {
@@ -2536,7 +2625,8 @@ $('btn-fit').onclick = fitView;
 const zoomBy = (k) => { const v = currentView(); zoomAt([v.w / 2, v.h / 2], k); };
 $('z-in').onclick = () => zoomBy(1.4);
 $('z-out').onclick = () => zoomBy(1 / 1.4);
-$('z-grid').onclick = () => { state.doc.settings.gridOn = !state.doc.settings.gridOn; changed(); };
+$('z-grid').onclick = toggleSnapGrid;
+$('z-pts').onclick = toggleSnapPts;
 $('z-help').onclick = () => $('dlg-help').showModal();
 $('seltools').onclick = (ev) => {
   const a = ev.target.closest('[data-sel]')?.dataset.sel;

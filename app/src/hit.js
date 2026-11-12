@@ -35,7 +35,8 @@ export function hitElement(els, v, sp, tol = 8) {
 }
 
 // 吸着先：近くの頂点 → なければ方眼。
-export function findSnap(els, v, sp, { grid, gridOn, extra = [], exclude = null }) {
+// pts が偽なら部材の角・下図の点には吸い付かない（描いている途中の点、特に始点には吸い付く）。
+export function findSnap(els, v, sp, { grid, gridOn, pts = true, extra = [], draft = [], exclude = null }) {
   const w = v.toW(sp);
   const tw = 10 / v.scale;
   let best = null;
@@ -43,11 +44,14 @@ export function findSnap(els, v, sp, { grid, gridOn, extra = [], exclude = null 
     const d = dist(w, p);
     if (d <= tw && (!best || d < best.d)) best = { p: [p[0], p[1]], d, type: 'vertex' };
   };
-  for (const el of els) {
-    if (el.id === exclude) continue;
-    for (const p of el.pts) consider(p);
+  for (const p of draft) consider(p);
+  if (pts) {
+    for (const el of els) {
+      if (el.id === exclude) continue;
+      for (const p of el.pts) consider(p);
+    }
+    for (const p of extra) consider(p);
   }
-  for (const p of extra) consider(p);
   if (best) return best;
   if (gridOn) return { p: [Math.round(w[0] / grid) * grid, Math.round(w[1] / grid) * grid], type: 'grid' };
   return { p: w, type: 'free' };
