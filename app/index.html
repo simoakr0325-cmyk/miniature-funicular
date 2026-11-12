@@ -29,13 +29,12 @@
     <button id="btn-redo" type="button" title="やり直す（Ctrl+Y）" aria-label="やり直す">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m13 5 4 4-4 4m4-4H8a5 5 0 0 0 0 10h2"/></svg>
     </button>
-    <button id="btn-fit" type="button" title="全体を見る（F）">全体</button>
     <button id="btn-3d" type="button" title="3D で見る（施主向けの絵）">3D</button>
     <button id="btn-sheet" type="button" aria-pressed="false" title="図面（印刷・PDF）">図面</button>
     <button id="btn-vault" class="primary" type="button" title="Obsidian と受け渡す">Obsidian<span class="dot" id="unsynced" hidden></span></button>
     <button id="btn-panel" class="only-narrow" type="button" aria-expanded="false" aria-controls="panel">詳細</button>
   </header>
-  <nav id="tools" class="tools" aria-label="道具"></nav>
+  <nav id="tools" class="tools" role="toolbar" aria-orientation="vertical" aria-label="道具"></nav>
   <main id="stage" class="stage">
     <svg id="canvas" class="canvas" role="img" aria-label="図面">
       <g id="underlays"></g>
@@ -43,8 +42,29 @@
       <g id="overlay"></g>
     </svg>
     <div id="empty-hint" class="empty-hint" hidden>
-      <p>左の道具から「敷地境界」を選び、角を順に打って囲みます。</p>
-      <p class="sub">最初の点をもう一度押すか Enter で閉じます。長さは数字を打って Enter。測量図や写真をなぞるときは「下図」から敷きます。</p>
+      <svg class="empty-mark" id="empty-mark" viewBox="0 0 130 130" aria-hidden="true"></svg>
+      <p class="empty-title">どこから始めますか</p>
+      <div class="empty-acts">
+        <button type="button" class="primary" data-start="draw">敷地を描く</button>
+        <button type="button" data-start="underlay">測量図・写真・DXF を敷く</button>
+        <button type="button" data-start="coord">座標で敷地を入れる</button>
+        <button type="button" data-start="sample">見本の庭を開く</button>
+      </div>
+      <p class="sub">描くときは、角を順に押して最初の点か Enter で閉じます。長さは数字を打って Enter。</p>
+      <svg class="empty-band" id="empty-band" viewBox="0 0 1344 180" aria-hidden="true"></svg>
+    </div>
+    <div id="seltools" class="seltools" role="toolbar" aria-label="選んだ部材" hidden>
+      <button type="button" data-sel="dup" title="複製（Ctrl+D）">複製</button>
+      <button type="button" data-sel="rot" title="左へ 90° 回す" aria-label="左へ 90° 回す">⟲</button>
+      <button type="button" data-sel="del" class="danger" title="削除（Delete）">削除</button>
+      <button type="button" data-sel="panel" class="only-narrow">詳細</button>
+    </div>
+    <div id="zoomctl" class="zoomctl" role="toolbar" aria-orientation="vertical" aria-label="表示">
+      <button type="button" id="z-in" title="寄る" aria-label="寄る">＋</button>
+      <button type="button" id="z-out" title="引く" aria-label="引く">−</button>
+      <button type="button" id="btn-fit" title="全体を見る（F）" aria-label="全体を見る"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
+      <button type="button" id="z-grid" aria-pressed="true" title="方眼に吸着（G）" aria-label="方眼に吸着"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7h14M3 13h14M7 3v14M13 3v14"/></svg></button>
+      <button type="button" id="z-help" title="操作の早見（?）" aria-label="操作の早見">？</button>
     </div>
     <div id="coord-readout" class="coord-readout" hidden></div>
     <div id="cmd" class="cmd" hidden>
@@ -78,6 +98,20 @@
   </div>
   <p class="v3d-hint muted small"><span class="only-fine">引いて回す・右ボタンで動かす・ホイールで寄る</span><span class="only-coarse">指で回す・二本指で動かす・つまんで寄る</span></p>
 </section>
+
+<dialog id="dlg-help" class="dlg">
+  <form method="dialog" class="dlg-body">
+    <h2>操作の早見</h2>
+    <table class="keys"><tbody>
+      <tr><th>道具</th><td><kbd>V</kbd> 選ぶ　<kbd>S</kbd> 敷地　<kbd>B</kbd> 建物　<kbd>P</kbd> 舗装　<kbd>L</kbd> 植栽帯　<kbd>T</kbd> 樹木　<kbd>R</kbd> 景石　<kbd>W</kbd> 塀　<kbd>C</kbd> 縁石　<kbd>H</kbd> 高さ点　<kbd>D</kbd> 寸法　<kbd>X</kbd> 文字</td></tr>
+      <tr><th>描く</th><td>点を押す／数字を打って <kbd>Enter</kbd> で長さ（<code>3000,90</code> で角度も）／<kbd>Enter</kbd> で閉じる／<kbd>Backspace</kbd> で一点戻る／<kbd>Shift</kbd> で 45°／<kbd>Alt</kbd> で吸着なし</td></tr>
+      <tr><th>選ぶ</th><td>押す／何もない所を引いて範囲（指は長押ししてから）／<kbd>Shift</kbd>＋押すで足す／<kbd>Ctrl</kbd>+<kbd>A</kbd> で全部</td></tr>
+      <tr><th>直す</th><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> 戻す／<kbd>Ctrl</kbd>+<kbd>Y</kbd> やり直す／<kbd>Ctrl</kbd>+<kbd>D</kbd> 複製／<kbd>Delete</kbd> 削除／辺の丸を <kbd>Shift</kbd>＋引くと曲がる</td></tr>
+      <tr><th>画面</th><td>右ボタン・<kbd>Space</kbd>＋引く・二本指で動かす／ホイール・つまむで寄る／<kbd>F</kbd> 全体／<kbd>G</kbd> 方眼／<kbd>Esc</kbd> 取消</td></tr>
+    </tbody></table>
+    <div class="row end"><button value="close">閉じる</button></div>
+  </form>
+</dialog>
 
 <dialog id="dlg-est" class="dlg dlg-wide">
   <form method="dialog" class="dlg-body">

@@ -414,3 +414,79 @@ table.est tfoot tr.sum th, table.est tfoot tr.sum td { font-weight: 700; font-si
 .v3d-time { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 .v3d-time input { width: clamp(90px, 18vw, 180px); accent-color: var(--brand-momiji); }
 .v3d-bar button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+
+/* ---- 使い勝手：折りたたみ・そばの道具・表示の道具・始まりの札 ---- */
+/* 指で押す所は 44px 以上（WCAG 2.5.5） */
+@media (pointer: coarse) {
+  button, .btn, select, input[type="text"], summary { min-height: 44px; }
+  .small-btn, .ul-item .row button { min-height: 40px; }
+}
+/* 右の欄の折りたたみ。印は見出しの前に置き、開け閉めを回して見せる */
+details.acc > summary {
+  list-style: none; display: flex; align-items: baseline; gap: 8px; cursor: pointer;
+  font-size: 1rem; font-weight: 700; color: var(--brand-bark); margin: 0; border-radius: 4px;
+}
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before {
+  content: ''; align-self: center; flex: none; width: 0.6em; height: 0.6em;
+  border-right: 2px solid var(--brand-green); border-bottom: 2px solid var(--brand-green);
+  rotate: -45deg; translate: 0 -1px;
+}
+details.acc[open] > summary::before { rotate: 45deg; translate: 0 -3px; }
+details.acc > summary small { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+details.acc > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+details.acc .acc-body { display: grid; gap: 12px; padding-top: 12px; }
+details.acc::details-content { interpolate-size: allow-keywords; overflow: clip; contain: layout; }
+details.acc:not([open])::details-content { block-size: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  details.acc > summary::before { transition: rotate 0.2s, translate 0.2s; }
+  details.acc::details-content { transition: block-size 0.25s ease-in-out, content-visibility 0.25s allow-discrete; }
+}
+
+/* 道具のキーの添え書きと区切り */
+.tools button { position: relative; }
+.tools kbd { position: absolute; top: 3px; right: 4px; font: 600 0.625rem/1 ui-monospace, Consolas, monospace; color: var(--muted); opacity: 0.75; }
+.tools .tool-sep { flex: none; height: 1px; margin: 6px 4px; background: var(--rule); margin-top: auto; }
+.tools .tool-sep + .tool-action { margin-top: 0; border-top: none; }
+.tools .tool-action { margin-top: 0; border-top: none; border-radius: 6px; }
+@media (hover: none), (max-width: 760px) { .tools kbd { display: none; } .tools .tool-sep { width: 1px; height: auto; margin: 6px 4px; } }
+
+/* 選んだ部材のそばの道具 */
+.seltools {
+  position: absolute; z-index: 5; display: flex; gap: 4px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+}
+.seltools[hidden] { display: none; }
+.seltools button { min-height: 34px; padding: 2px 10px; border-color: transparent; font-size: 0.8125rem; }
+@media (pointer: coarse) { .seltools button { min-height: 44px; padding-inline: 14px; } }
+@media (min-width: 761px) { .seltools .only-narrow { display: none; } }
+
+/* 表示の道具（寄る・引く・全体・方眼・早見） */
+.zoomctl {
+  position: absolute; right: 12px; bottom: 12px; z-index: 4; display: flex; flex-direction: column; gap: 2px; padding: 3px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+}
+.zoomctl button { min-height: 36px; min-width: 36px; padding: 0; border-color: transparent; font-size: 1.05rem; }
+.zoomctl svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.zoomctl button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+@media (pointer: coarse) { .zoomctl button { min-height: 44px; min-width: 44px; } }
+@media (max-width: 760px) { .zoomctl { bottom: 76px; right: 8px; } #z-in, #z-out { display: none; } }
+
+/* 始まりの札 */
+.empty-hint {
+  top: 50%; translate: 0 -55%; width: min(460px, calc(100% - 32px)); padding: 22px 22px 14px; border-radius: 14px;
+  pointer-events: auto; display: grid; gap: 12px; justify-items: center; text-align: center;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.08);
+}
+.empty-hint[hidden] { display: none; }
+.empty-mark { width: 54px; height: 54px; fill: var(--brand-momiji); }
+.empty-title { font-size: 1.125rem; font-weight: 700; color: var(--brand-bark); }
+.empty-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.empty-acts button { min-height: 46px; white-space: normal; }
+.empty-band { width: 100%; height: auto; max-height: 34px; fill: var(--brand-bark); opacity: 0.55; }
+
+/* 早見の表 */
+table.keys { border-collapse: collapse; font-size: 0.875rem; }
+table.keys th { text-align: left; vertical-align: top; padding: 6px 12px 6px 0; white-space: nowrap; color: var(--brand-bark); }
+table.keys td { padding: 6px 0; line-height: 1.9; }
+kbd { font: 600 0.75rem/1 ui-monospace, Consolas, monospace; padding: 2px 5px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; background: var(--paper); }

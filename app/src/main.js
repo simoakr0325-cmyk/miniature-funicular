@@ -17,6 +17,7 @@ import * as LL from './latlng.js';
 import * as GSI from './gsimap.js';
 import * as TR from './terrain.js';
 import { getKou } from './kou.js';
+import { JOMON } from './jomon.js';
 import * as SP from './species.js';
 import { makeZip } from './zip.js';
 import { sampleDoc } from './sample.js';
@@ -35,8 +36,8 @@ const overlayG = $('overlay');
 
 const TOOLS = [
   { id: 'select', label: '選ぶ', key: 'V' },
-  { id: 'shikichi' }, { id: 'tatemono' }, { id: 'hoso' }, { id: 'shokusaitai' }, { id: 'jumoku' },
-  { id: 'keiseki' }, { id: 'hei' }, { id: 'enseki' }, { id: 'takasa' }, { id: 'sunpo' }, { id: 'moji' },
+  { id: 'shikichi', key: 'S' }, { id: 'tatemono', key: 'B' }, { id: 'hoso', key: 'P' }, { id: 'shokusaitai', key: 'L' }, { id: 'jumoku', key: 'T' },
+  { id: 'keiseki', key: 'R' }, { id: 'hei', key: 'W' }, { id: 'enseki', key: 'C' }, { id: 'takasa', key: 'H' }, { id: 'sunpo', key: 'D' }, { id: 'moji', key: 'X' },
   { id: 'coord', label: '座標', action: true, title: '座標で入力（平面直角座標）' },
   { id: 'underlay', label: '下図', action: true, title: '下図を敷く（測量図 PDF・写真）' },
 ];
@@ -89,7 +90,25 @@ function render() {
     $('empty-hint').hidden = live(state.doc).length > 0 || liveUnderlays(state.doc).length > 0 || !!state.draft || !!state.ulMode || state.sheetMode;
     $('btn-undo').disabled = !undoStack.length;
     $('btn-redo').disabled = !redoStack.length;
+    $('z-grid').setAttribute('aria-pressed', String(!!state.doc.settings.gridOn));
+    placeSelTools(v);
   });
+}
+
+// 選んだ部材のそばに出す小さな道具（複製・回す・削除）。引いている間や描いている間は隠す。
+function placeSelTools(v) {
+  const box = $('seltools');
+  const els = selectedEls();
+  if (!els.length || state.draft || state.sheetMode || state.ulMode || gesture || state.tool !== 'select') { box.hidden = true; return; }
+  const pts = els.flatMap((e) => (e.r ? [[e.pts[0][0] - e.r, e.pts[0][1] - e.r], [e.pts[0][0] + e.r, e.pts[0][1] + e.r]] : e.pts)).map((p) => v.toS(p));
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  box.hidden = false;
+  const w = box.offsetWidth, h = box.offsetHeight;
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  let top = Math.min(...ys) - h - 14;
+  if (top < 8) top = Math.min(Math.max(...ys) + 14, v.h - h - 8);
+  box.style.left = `${Math.min(Math.max(cx - w / 2, 8), v.w - w - 8)}px`;
+  box.style.top = `${Math.max(top, 8)}px`;
 }
 
 function renderOverlayOnly() {
@@ -806,14 +825,18 @@ document.addEventListener('keydown', (e) => {
       } else deleteSelected();
       e.preventDefault();
       break;
-    case 'v': case 'V': setTool('select'); break;
+    case '?': $('dlg-help').showModal(); break;
     case 'f': case 'F': fitView(); break;
     case 'g': case 'G':
       state.doc.settings.gridOn = !state.doc.settings.gridOn;
       changed();
       break;
-    default:
+    default: {
+      // 道具のキー（V・S・B・P・L・T・R・W・C・H・D・X）
+      const t = e.key.length === 1 && TOOLS.find((x) => x.key === e.key.toUpperCase() && !x.action);
+      if (t && !state.sheetMode && !state.ulMode) setTool(t.id);
       break;
+    }
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -958,6 +981,7 @@ function renderPanel() {
     changed({ panel: false });
   });
   bindUnderlayPanel(p);
+  accordionize(p);
   bindPlacePanel();
   bindTerrainPanel();
   bindSpeciesPanel();
@@ -1239,6 +1263,33 @@ async function writeSpeciesNotes() {
   const zip = new File([makeZip(notes.map((n) => ({ ...n, name: '植木/' + n.name })))], '植木ノート.zip', { type: 'application/zip' });
   const r = await vault.shareOrDownload([zip], zip.name);
   if (r !== 'cancelled') toast('植木ノートをまとめて書き出しました。展開して vault の 10_辞書 に置いてください');
+}
+
+// 右の欄（現場のとき）の各項を折りたたみにする。開け閉めは端末に覚える。
+// 見出し（h2）は summary の中に入れない（読み上げで見出しが消えるため）ので、文字だけを移す。
+const ACC_OPEN = { 下図: true, 数量: true };
+function accordionize(p) {
+  [...p.querySelectorAll(':scope > section.psec')].forEach((sec, i) => {
+    const h2 = sec.querySelector(':scope > h2');
+    if (!h2 || i === 0) return; // 一つ目（現場）は開いたまま
+    const name = h2.firstChild?.textContent.trim() || '';
+    const key = 'acc:' + name;
+    let open = ACC_OPEN[name] || false;
+    try { const v = localStorage.getItem(key); if (v !== null) open = v === '1'; } catch { /* 覚えられなくても動く */ }
+    const d = document.createElement('details');
+    d.className = 'psec acc';
+    d.open = open;
+    const sum = document.createElement('summary');
+    sum.innerHTML = h2.innerHTML;
+    d.append(sum);
+    h2.remove();
+    const body = document.createElement('div');
+    body.className = 'acc-body';
+    body.append(...sec.childNodes);
+    d.append(body);
+    d.addEventListener('toggle', () => { try { localStorage.setItem(key, d.open ? '1' : '0'); } catch { /* 同上 */ } });
+    sec.replaceWith(d);
+  });
 }
 
 // ---------- 見積 ----------
@@ -2333,8 +2384,9 @@ function buildTools() {
   nav.innerHTML = TOOLS.map((t) => {
     const label = t.label || KINDS[t.id].label;
     const attr = t.action ? `data-action="${t.id}" class="tool-action"` : `data-tool="${t.id}" aria-pressed="${t.id === state.tool}"`;
-    return `<button type="button" ${attr} title="${t.title || label}${t.key ? `（${t.key}）` : ''}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ico-${t.id}"/></svg><span>${label}</span></button>`;
+    const sep = t.id === 'coord' ? '<span role="separator" class="tool-sep"></span>' : '';
+    return `${sep}<button type="button" ${attr} title="${t.title || label}${t.key ? `（${t.key}）` : ''}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ico-${t.id}"/></svg><span>${label}</span>${t.key ? `<kbd aria-hidden="true">${t.key}</kbd>` : ''}</button>`;
   }).join('') + ICONS;
   nav.onclick = (ev) => {
     const b = ev.target.closest('[data-tool]');
@@ -2364,6 +2416,32 @@ const ICONS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
 $('btn-undo').onclick = undo;
 $('btn-redo').onclick = redo;
 $('btn-fit').onclick = fitView;
+const zoomBy = (k) => { const v = currentView(); zoomAt([v.w / 2, v.h / 2], k); };
+$('z-in').onclick = () => zoomBy(1.4);
+$('z-out').onclick = () => zoomBy(1 / 1.4);
+$('z-grid').onclick = () => { state.doc.settings.gridOn = !state.doc.settings.gridOn; changed(); };
+$('z-help').onclick = () => $('dlg-help').showModal();
+$('seltools').onclick = (ev) => {
+  const a = ev.target.closest('[data-sel]')?.dataset.sel;
+  if (a === 'dup') duplicateSelected();
+  else if (a === 'rot') rotateSelected(90);
+  else if (a === 'del') deleteSelected();
+  else if (a === 'panel') togglePanel(true);
+};
+$('empty-hint').onclick = (ev) => {
+  const a = ev.target.closest('[data-start]')?.dataset.start;
+  if (a === 'draw') setTool('shikichi');
+  else if (a === 'underlay') $('ul-input').click();
+  else if (a === 'coord') showCoordDialog();
+  else if (a === 'sample') openSample();
+};
+// 始まりの札に縄文文様（眉月渦文と入組双渦帯）
+{
+  const path = (id, dx = 0) => JOMON[id].polys.map((p) => 'M' + p.map((v, i) => (i % 2 ? v : v + dx)).join(' ') + 'Z').join('')
+    + JOMON[id].circles.map(([x, y, r]) => `M${x + dx - r} ${y}a${r} ${r} 0 1 0 ${r * 2} 0a${r} ${r} 0 1 0 ${-r * 2} 0Z`).join('');
+  $('empty-mark').innerHTML = `<path d="${path('J-39')}"/>`;
+  $('empty-band').innerHTML = `<path d="${path('J-12')}${path('J-12', 672)}"/>`;
+}
 $('btn-site').onclick = showSites;
 $('btn-vault').onclick = showVault;
 $('btn-panel').onclick = () => togglePanel();
