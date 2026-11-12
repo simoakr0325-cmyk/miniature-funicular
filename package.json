@@ -5,6 +5,8 @@
   "description": "山波創苑の外構・造園CAD「縄張り台」",
   "scripts": {
     "start": "node tools/serve.mjs",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "upload": "node tools/upload-app.mjs",
+    "deploy": "node tools/upload-app.mjs && wrangler deploy"
   }
 }

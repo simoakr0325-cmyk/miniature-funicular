@@ -4,13 +4,10 @@ name = "nawabari"
 main = "server/worker.js"
 compatibility_date = "2026-06-01"
 
-[assets]
-directory = "./app"
-binding = "ASSETS"
-# /api/ だけ Worker を通す。ほかはアプリのファイルをそのまま返す。
-run_worker_first = ["/api/*"]
+# アプリのファイル（app/）も保管庫に入れて Worker から返す（tools/upload-app.mjs）。
+# Workers の静的アセットは、配置の時に使い捨ての鍵を使うため、トークンを中継で差し込む環境からは上げられない。
 
 # 保管庫（KV）。id は「npx wrangler kv namespace create STORE」で出た値に置き換える。
 [[kv_namespaces]]
 binding = "STORE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "782953ddf49746948b520ec1de500332"

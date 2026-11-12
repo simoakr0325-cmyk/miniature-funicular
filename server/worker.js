@@ -28,6 +28,15 @@ async function sameKey(given, expected) {
 
 const metaOf = (doc) => ({ id: doc.id, siteId: doc.siteId || '', siteName: doc.siteName || '', updatedAt: doc.updatedAt, count: live(doc).length });
 
+// 目録（index）：図ID → 見出し。一覧の反映待ちを埋めるためのもので、一日より古い記録は捨てる。
+async function touchIndex(env, id, meta) {
+  const index = (await env.STORE.get('index', 'json')) || {};
+  index[id] = meta;
+  const old = new Date(Date.now() - 864e5).toISOString();
+  for (const [k, m] of Object.entries(index)) if (m.updatedAt < old) delete index[k];
+  await env.STORE.put('index', JSON.stringify(index));
+}
+
 export async function handleApi(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '');
@@ -52,8 +61,15 @@ export async function handleApi(request, env) {
       for (const k of page.keys) if (k.metadata) out.push(k.metadata);
       cursor = page.list_complete ? null : page.cursor;
     } while (cursor);
-    out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    return json({ docs: out });
+    // 一覧（list）は反映に一分ほどかかるので、すぐ読める目録（index）と合わせる
+    const index = (await env.STORE.get('index', 'json')) || {};
+    const byId = new Map(out.map((m) => [m.id, m]));
+    for (const [id, m] of Object.entries(index)) {
+      if (m.deleted) byId.delete(id);
+      else if (!byId.has(id) || byId.get(id).updatedAt < m.updatedAt) byId.set(id, m);
+    }
+    const docs = [...byId.values()].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    return json({ docs });
   }
 
   const dm = /^\/docs\/([^/]+)$/.exec(path);
@@ -81,11 +97,13 @@ export async function handleApi(request, env) {
       // 中身が変わらなければ書かない（保管庫の書き込み回数を節約する）
       if (!stored || body !== JSON.stringify(stored)) {
         await env.STORE.put('doc:' + id, body, { metadata: metaOf(result) });
+        await touchIndex(env, id, metaOf(result));
       }
       return json({ doc: result, pulled });
     }
     if (method === 'DELETE') {
       await env.STORE.delete('doc:' + id);
+      await touchIndex(env, id, { id, deleted: true, updatedAt: new Date().toISOString() });
       return json({ ok: true });
     }
   }
@@ -120,6 +138,34 @@ export default {
         return json({ error: 'サーバの中で失敗しました：' + err.message }, 500);
       }
     }
-    return env.ASSETS.fetch(request);
+    if (env.ASSETS) return env.ASSETS.fetch(request);
+    return serveFromStore(request, env);
   },
 };
+
+// アプリのファイルを保管庫（KV の file:<道>）から返す。tools/upload-app.mjs で入れる。
+// 中身の指紋（etag）が同じなら 304 を返し、iPhone の通信を減らす。
+const TYPES = {
+  html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8',
+  json: 'application/json; charset=utf-8', webmanifest: 'application/manifest+json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg',
+  jpeg: 'image/jpeg', ico: 'image/x-icon', txt: 'text/plain; charset=utf-8', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  wasm: 'application/wasm', bcmap: 'application/octet-stream', pfb: 'application/octet-stream', ttf: 'font/ttf', woff2: 'font/woff2',
+};
+export async function serveFromStore(request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
+  let path = decodeURIComponent(new URL(request.url).pathname);
+  if (path.endsWith('/')) path += 'index.html';
+  let { value, metadata } = await env.STORE.getWithMetadata('file:' + path, 'arrayBuffer');
+  if (!value && !/\.[a-z0-9]+$/i.test(path)) ({ value, metadata } = await env.STORE.getWithMetadata('file:/index.html', 'arrayBuffer'));
+  if (!value) return new Response('ありません', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  const ext = (/\.([a-z0-9]+)$/i.exec(path)?.[1] || 'html').toLowerCase();
+  const etag = `"${metadata?.hash || ''}"`;
+  const headers = {
+    'content-type': TYPES[ext] || 'application/octet-stream',
+    'cache-control': 'no-cache',
+    etag,
+    'x-content-type-options': 'nosniff',
+  };
+  if (metadata?.hash && request.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers });
+  return new Response(request.method === 'HEAD' ? null : value, { headers });
+}

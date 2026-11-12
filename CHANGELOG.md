@@ -4,6 +4,13 @@
 
 ## 未公開
 
+### iPhone から開ける置き場所 — 2026-11-12
+
+- 追加：Cloudflare Workers に置いた（https://nawabari.simoakr0325.workers.dev/）。アプリの配信と自動同期を一つの URL で。
+- 追加：`tools/upload-app.mjs`（app/ の変わったファイルだけを KV に送る）。Worker は KV からアプリのファイルを返す（etag で 304）。
+- 追加：サーバの目録（index）。別の端末で作った現場が、一覧の反映を待たずに出る。
+- 確認：本番で PC と iPhone（画面幅 390）の二つの端末から、合言葉の誤り・リンクでの接続・取り込み・両方の変更の合流・3D の写真の質感を確かめた。
+
 ### オンラインの自動同期と置き場所 — 2026-11-12
 
 - 追加：サーバ（`server/worker.js`、Cloudflare Workers）。アプリの配信と、合言葉つきの同期の保管庫（図は部材ごとに合わせる、下図の画像、一覧）。`wrangler.toml`、置き方は `docs/sync.md`。
